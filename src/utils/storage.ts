@@ -58,30 +58,27 @@ function setLocalOnly(key: string, value: any) {
   }
 }
 
-// Direct multi-doc sync helper: writes items immediately via setDoc
+// Direct multi-doc sync helper: writes/upserts items immediately via setDoc without deleting other docs
 async function syncCollectionToFirestore(colName: string, items: Array<{ id: string } & Record<string, any>>) {
-  if (!items) return;
+  if (!items || !items.length) return;
   try {
-    // 1. Save / Update all items in parallel using setDoc
     const savePromises = items.map(item => {
       if (!item || !item.id) return Promise.resolve();
       const docRef = doc(db, colName, item.id);
       return setDoc(docRef, sanitizeForFirestore(item), { merge: true });
     });
     await Promise.all(savePromises);
-
-    // 2. Cleanup deleted documents in background
-    getDocs(collection(db, colName)).then(snap => {
-      const currentIds = new Set(items.map(item => item.id));
-      snap.docs.forEach(d => {
-        if (!currentIds.has(d.id)) {
-          deleteDoc(doc(db, colName, d.id)).catch(err => console.warn(`Delete failed for ${d.id}:`, err));
-        }
-      });
-    }).catch(() => {});
-
   } catch (e) {
     console.error(`Firestore sync failed for collection [${colName}]:`, e);
+  }
+}
+
+export async function deleteDocumentFromFirestore(colName: string, id: string) {
+  if (!colName || !id) return;
+  try {
+    await deleteDoc(doc(db, colName, id));
+  } catch (e) {
+    console.error(`Error deleting doc [${id}] from collection [${colName}]:`, e);
   }
 }
 

@@ -11,7 +11,8 @@ import {
   loadDeliveryNotes, saveDeliveryNotes,
   loadPayments, savePayments,
   subscribeToFirestore,
-  testFirestoreConnection
+  testFirestoreConnection,
+  deleteDocumentFromFirestore
 } from './utils/storage';
 
 import { Navigation, NavTab } from './components/Navigation';
@@ -104,6 +105,7 @@ export default function App() {
 
   const handleDeleteProduct = (id: string) => {
     setProducts(prev => prev.filter(p => p.id !== id));
+    deleteDocumentFromFirestore('products', id);
     showToast('Product removed from catalog.');
   };
 
@@ -123,6 +125,7 @@ export default function App() {
 
   const handleDeleteCustomer = (id: string) => {
     setCustomers(prev => prev.filter(c => c.id !== id));
+    deleteDocumentFromFirestore('customers', id);
     showToast('Customer record deleted.');
   };
 
@@ -153,6 +156,7 @@ export default function App() {
 
   const handleDeleteInvoice = (id: string) => {
     setInvoices(prev => prev.filter(i => i.id !== id));
+    deleteDocumentFromFirestore('invoices', id);
     showToast('Invoice deleted.');
   };
 
@@ -172,6 +176,7 @@ export default function App() {
 
   const handleDeleteQuotation = (id: string) => {
     setQuotations(prev => prev.filter(q => q.id !== id));
+    deleteDocumentFromFirestore('quotations', id);
     showToast('Quotation deleted.');
   };
 
