@@ -1,0 +1,6 @@
+{
+  "name": "Roti Bros",
+  "description": "Roti Bros Invoicing, Delivery Dispatch, Quotation & Consolidated Reporting Suite.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

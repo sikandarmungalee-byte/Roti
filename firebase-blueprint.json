@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "companySettings": {
+      "collection": "company_settings",
+      "fields": {
+        "name": { "type": "string" },
+        "tradingName": { "type": "string" },
+        "address": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "taxNumber": { "type": "string" },
+        "vatNumber": { "type": "string" },
+        "registrationNumber": { "type": "string" },
+        "bankName": { "type": "string" },
+        "accountName": { "type": "string" },
+        "accountNumber": { "type": "string" },
+        "branchCode": { "type": "string" },
+        "currencySymbol": { "type": "string" },
+        "defaultTerms": { "type": "string" }
+      }
+    },
+    "products": {
+      "collection": "products",
+      "fields": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "packQuantity": { "type": "number" },
+        "size": { "type": "string" },
+        "price": { "type": "number" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "sku": { "type": "string" }
+      }
+    },
+    "customers": {
+      "collection": "customers",
+      "fields": {
+        "id": { "type": "string" },
+        "registeredName": { "type": "string" },
+        "code": { "type": "string" },
+        "tradingName": { "type": "string font-mono" },
+        "isTradingSameAsRegistered": { "type": "boolean" },
+        "address": { "type": "string" },
+        "email": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "phone": { "type": "string" },
+        "taxNumber": { "type": "string" },
+        "vatNumber": { "type": "string" },
+        "registrationNumber": { "type": "string" }
+      }
+    },
+    "invoices": {
+      "collection": "invoices",
+      "fields": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "branchId": { "type": "string" },
+        "subtotal": { "type": "number" },
+        "taxRate": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "amountPaid": { "type": "number" },
+        "balanceDue": { "type": "number" },
+        "status": { "type": "string" }
+      }
+    },
+    "quotations": {
+      "collection": "quotations",
+      "fields": {
+        "id": { "type": "string" },
+        "quotationNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "branchId": { "type": "string" },
+        "totalAmount": { "type": "number" }
+      }
+    },
+    "deliveryNotes": {
+      "collection": "delivery_notes",
+      "fields": {
+        "id": { "type": "string" },
+        "deliveryNoteNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "branchId": { "type": "string font-mono" }
+      }
+    },
+    "payments": {
+      "collection": "payments",
+      "fields": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string font-mono" },
+        "amount": { "type": "number" }
+      }
+    }
+  }
+}
