@@ -264,7 +264,7 @@ export const ConsolidatedReports: React.FC<Props> = ({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+        <div className={`grid grid-cols-1 ${selectedBranch ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4 text-xs`}>
           
           {/* Company Card */}
           <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-lg border border-slate-200 dark:border-slate-700/60 space-y-2">
@@ -324,40 +324,26 @@ export const ConsolidatedReports: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Branch Card */}
-          <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-lg border border-slate-200 dark:border-slate-700/60 space-y-2">
-            <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white pb-1 border-b border-slate-200 dark:border-slate-700">
-              <GitBranch className="w-4 h-4 text-emerald-500 shrink-0" />
-              <span>Branch Location Details</span>
+          {/* Branch Card (Only rendered if a specific branch is selected) */}
+          {selectedBranch && (
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-lg border border-slate-200 dark:border-slate-700/60 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white pb-1 border-b border-slate-200 dark:border-slate-700">
+                <GitBranch className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>Branch Location Details</span>
+              </div>
+              <div>
+                <p className="font-extrabold text-slate-900 dark:text-white text-sm">{selectedBranch.name}</p>
+                <p className="text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">Branch Code: {selectedBranch.code}</p>
+              </div>
+              <div className="space-y-1 text-slate-600 dark:text-slate-300 text-[11px]">
+                <p><span className="font-semibold">Branch Reg No:</span> {selectedBranch.registrationNumber || 'N/A'}</p>
+                <p><span className="font-semibold">Tax ID:</span> {selectedBranch.taxNumber || 'N/A'} | <span className="font-semibold">VAT ID:</span> {selectedBranch.vatNumber || 'N/A'}</p>
+                <p className="flex items-start gap-1"><MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" /> <span>{selectedBranch.address || 'Location address N/A'}</span></p>
+                <p className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400 shrink-0" /> <span>{selectedBranch.contactPerson} ({selectedBranch.phone})</span></p>
+                <p className="flex items-center gap-1"><Mail className="w-3 h-3 text-slate-400 shrink-0" /> <span>{selectedBranch.email}</span></p>
+              </div>
             </div>
-            {selectedBranch ? (
-              <>
-                <div>
-                  <p className="font-extrabold text-slate-900 dark:text-white text-sm">{selectedBranch.name}</p>
-                  <p className="text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">Branch Code: {selectedBranch.code}</p>
-                </div>
-                <div className="space-y-1 text-slate-600 dark:text-slate-300 text-[11px]">
-                  <p><span className="font-semibold">Branch Reg No:</span> {selectedBranch.registrationNumber || 'N/A'}</p>
-                  <p><span className="font-semibold">Tax ID:</span> {selectedBranch.taxNumber || 'N/A'} | <span className="font-semibold">VAT ID:</span> {selectedBranch.vatNumber || 'N/A'}</p>
-                  <p className="flex items-start gap-1"><MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" /> <span>{selectedBranch.address || 'Location address N/A'}</span></p>
-                  <p className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400 shrink-0" /> <span>{selectedBranch.contactPerson} ({selectedBranch.phone})</span></p>
-                  <p className="flex items-center gap-1"><Mail className="w-3 h-3 text-slate-400 shrink-0" /> <span>{selectedBranch.email}</span></p>
-                </div>
-              </>
-            ) : selectedCustomer ? (
-              <div className="py-3 space-y-1 text-slate-500 dark:text-slate-400">
-                <p className="font-bold text-slate-800 dark:text-slate-200">ALL BRANCHES ({selectedCustomer.branches.length})</p>
-                <p className="text-[11px]">Consolidated across all registered branches for <span className="font-bold text-slate-700 dark:text-slate-200">{selectedCustomer.registeredName}</span>.</p>
-                <p className="text-[10px] text-slate-400 italic">Select a specific branch above to isolate branch report details.</p>
-              </div>
-            ) : (
-              <div className="py-3 space-y-1 text-slate-500 dark:text-slate-400">
-                <p className="font-bold text-slate-800 dark:text-slate-200">ALL SYSTEM BRANCHES</p>
-                <p className="text-[11px]">Consolidated report including all client branch locations nationwide.</p>
-                <p className="text-[10px] text-slate-400 italic">Select a customer and branch to view detailed location breakdown.</p>
-              </div>
-            )}
-          </div>
+          )}
 
         </div>
       </div>

@@ -220,7 +220,7 @@ export const InvoiceList: React.FC<Props> = ({
                       {cust ? cust.registeredName : 'Unknown'}
                     </span>
                     <span className="text-slate-500 text-[11px] block">
-                      {branch ? `Branch: ${branch.name}` : 'Main Branch'}
+                      {branch ? `Branch: ${branch.name}` : ''}
                     </span>
                   </div>
 
@@ -237,7 +237,6 @@ export const InvoiceList: React.FC<Props> = ({
 
                 <div className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
                   <span>Issued: {inv.issueDate}</span>
-                  <span>Due: {inv.dueDate}</span>
                 </div>
 
                 {/* PDF & Action Buttons */}
@@ -349,7 +348,7 @@ export const InvoiceList: React.FC<Props> = ({
                           {inv.invoiceNumber}
                         </div>
                         <div className="text-xs text-slate-400 mt-0.5">
-                          Issued: {inv.issueDate} | Due: {inv.dueDate}
+                          Issued: {inv.issueDate}
                         </div>
                       </td>
 
@@ -357,9 +356,11 @@ export const InvoiceList: React.FC<Props> = ({
                         <div className="font-semibold text-slate-900 dark:text-slate-100">
                           {cust ? cust.registeredName : 'Unknown Customer'}
                         </div>
-                        <div className="text-xs text-slate-500">
-                          {branch ? `Branch: ${branch.name}` : 'Main Branch'}
-                        </div>
+                        {branch && (
+                          <div className="text-xs text-slate-500">
+                            Branch: {branch.name}
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">

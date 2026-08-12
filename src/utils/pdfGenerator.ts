@@ -62,8 +62,7 @@ export function generateInvoicePDF(
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
   doc.text(`Issue Date: ${invoice.issueDate}`, 196, 34, { align: 'right' });
-  doc.text(`Due Date: ${invoice.dueDate}`, 196, 40, { align: 'right' });
-  doc.text(`Status: ${invoice.status.toUpperCase()}`, 196, 46, { align: 'right' });
+  doc.text(`Status: ${invoice.status.toUpperCase()}`, 196, 40, { align: 'right' });
 
   // Divider
   const boxTop = Math.max(y + 4, 52);
@@ -365,33 +364,34 @@ export function generateDeliveryNotePDF(
     cY += 4.5;
   }
 
-  // Right Column: Delivery Branch Location
-  let brY = boxTop + 6;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(30, 41, 59);
-  doc.text('DELIVER TO (BRANCH LOCATION):', 110, brY);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text(branch ? `${branch.name} (${branch.code})` : `${customer.registeredName} (Main Office)`, 110, brY + 6);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-  let bLine = brY + 11;
-
-  const delAddress = deliveryNote.deliveryAddress || (branch ? branch.address : customer.address);
-  const brAddrLines = doc.splitTextToSize(delAddress || '', 85);
-  doc.text(brAddrLines, 110, bLine);
-  bLine += brAddrLines.length * 4.5;
-
-  const contactName = deliveryNote.recipientContact || (branch ? branch.contactPerson : customer.contactPerson);
-  const contactPhone = deliveryNote.recipientPhone || (branch ? branch.phone : customer.phone);
-  doc.text(`Contact: ${contactName} (${contactPhone})`, 110, bLine);
-  bLine += 4.5;
-
+  // Right Column: Delivery Branch Location (Only rendered if a branch is specified)
+  let bLine = boxTop + 6;
   if (branch) {
+    let brY = boxTop + 6;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(30, 41, 59);
+    doc.text('DELIVER TO (BRANCH LOCATION):', 110, brY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(`${branch.name} (${branch.code})`, 110, brY + 6);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    bLine = brY + 11;
+
+    const delAddress = deliveryNote.deliveryAddress || branch.address;
+    const brAddrLines = doc.splitTextToSize(delAddress || '', 85);
+    doc.text(brAddrLines, 110, bLine);
+    bLine += brAddrLines.length * 4.5;
+
+    const contactName = deliveryNote.recipientContact || branch.contactPerson;
+    const contactPhone = deliveryNote.recipientPhone || branch.phone;
+    doc.text(`Contact: ${contactName} (${contactPhone})`, 110, bLine);
+    bLine += 4.5;
+
     doc.text(`Email: ${branch.email}`, 110, bLine);
     bLine += 4.5;
     if (branch.registrationNumber) {
@@ -402,16 +402,16 @@ export function generateDeliveryNotePDF(
       doc.text(`Tax ID: ${branch.taxNumber || 'N/A'} | VAT ID: ${branch.vatNumber || 'N/A'}`, 110, bLine);
       bLine += 4.5;
     }
-  }
 
-  if (deliveryNote.driverNotes) {
-    bLine += 2;
-    doc.setFont('helvetica', 'bold');
-    doc.text('Driver Notes:', 110, bLine);
-    doc.setFont('helvetica', 'normal');
-    const driverLines = doc.splitTextToSize(deliveryNote.driverNotes, 85);
-    doc.text(driverLines, 110, bLine + 4.5);
-    bLine += 4.5 + (driverLines.length * 4.5);
+    if (deliveryNote.driverNotes) {
+      bLine += 2;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Driver Notes:', 110, bLine);
+      doc.setFont('helvetica', 'normal');
+      const driverLines = doc.splitTextToSize(deliveryNote.driverNotes, 85);
+      doc.text(driverLines, 110, bLine + 4.5);
+      bLine += 4.5 + (driverLines.length * 4.5);
+    }
   }
 
   // Items Table (Focus on Quantities, Pack Sizes, & Descriptions for warehouse/delivery)
@@ -697,21 +697,29 @@ export function generateConsolidatedReportPDF(
   doc.setTextColor(15, 23, 42);
   doc.text('CONSOLIDATED ACCOUNTING REPORT', 196, 18, { align: 'right' });
 
+  const stmtDate = new Date();
+  const stmtDateStr = stmtDate.toLocaleDateString('en-ZA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const stmtDueDateObj = new Date(stmtDate);
+  stmtDueDateObj.setDate(stmtDueDateObj.getDate() + 7);
+  const stmtDueDateStr = stmtDueDateObj.toLocaleDateString('en-ZA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(100, 116, 139);
-  doc.text(`Generated on: ${new Date().toLocaleDateString('en-US', { dateStyle: 'medium' })}`, 196, 24, { align: 'right' });
-  doc.text(`Report Period: ${periodLabel.toUpperCase()}`, 196, 29, { align: 'right' });
+  doc.text(`Statement Date: ${stmtDateStr}`, 196, 22, { align: 'right' });
+  doc.text(`Payment Due Date (Net 7 Days): ${stmtDueDateStr}`, 196, 27, { align: 'right' });
+  doc.text(`Report Period: ${periodLabel.toUpperCase()}`, 196, 32, { align: 'right' });
 
   doc.setDrawColor(226, 232, 240);
-  doc.line(14, 33, 196, 33);
+  doc.line(14, 35, 196, 35);
 
-  // --- THREE ENTITY DETAIL COLUMNS (COMPANY, CUSTOMER, BRANCH) ---
+  // --- ENTITY DETAIL COLUMNS (COMPANY, CUSTOMER, & CONDITIONAL BRANCH) ---
   const selCust = filter.customerId !== 'all' ? customers.find(c => c.id === filter.customerId) : undefined;
   const selBranch = (selCust && filter.branchId !== 'all') ? selCust.branches.find(b => b.id === filter.branchId) : undefined;
 
-  const colStartY = 37;
-  const colWidth = 57;
+  const colStartY = 39;
+  const colWidth = selBranch ? 57 : 88;
+  const colGap = selBranch ? 4 : 6;
   const boxHeight = 52;
 
   // Box 1: COMPANY DETAILS
@@ -753,7 +761,7 @@ export function generateConsolidatedReportPDF(
   doc.text(`Email: ${company.email || 'N/A'}`, 18, cLine);
 
   // Box 2: CUSTOMER DETAILS
-  const custX = 14 + colWidth + 4;
+  const custX = 14 + colWidth + colGap;
   doc.setFillColor(248, 250, 252);
   doc.roundedRect(custX, colStartY, colWidth, boxHeight, 2, 2, 'F');
   doc.setDrawColor(226, 232, 240);
@@ -802,19 +810,19 @@ export function generateConsolidatedReportPDF(
     doc.text(`Report includes all billed entities.`, custX + 4, colStartY + 28);
   }
 
-  // Box 3: BRANCH DETAILS
-  const branchX = custX + colWidth + 4;
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(branchX, colStartY, colWidth, boxHeight, 2, 2, 'F');
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(branchX, colStartY, colWidth, boxHeight, 2, 2, 'S');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(30, 41, 59);
-  doc.text('3. BRANCH LOCATION', branchX + 4, colStartY + 5);
-
+  // Box 3: BRANCH DETAILS (Only added if a specific branch is selected)
   if (selBranch) {
+    const branchX = custX + colWidth + colGap;
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(branchX, colStartY, colWidth, boxHeight, 2, 2, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(branchX, colStartY, colWidth, boxHeight, 2, 2, 'S');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(30, 41, 59);
+    doc.text('3. BRANCH LOCATION', branchX + 4, colStartY + 5);
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
@@ -835,28 +843,6 @@ export function generateConsolidatedReportPDF(
       bLine += (brAddrLines.length * 3.5);
     }
     doc.text(`Contact: ${selBranch.contactPerson || 'N/A'} (${selBranch.phone || 'N/A'})`, branchX + 4, bLine);
-  } else if (selCust) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(15, 23, 42);
-    doc.text('ALL CUSTOMER BRANCHES', branchX + 4, colStartY + 12);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(71, 85, 105);
-    doc.text(`Customer: ${selCust.registeredName}`, branchX + 4, colStartY + 18);
-    doc.text(`Branches: ${selCust.branches.length} registered locations`, branchX + 4, colStartY + 23);
-    doc.text(`Consolidated across all branches.`, branchX + 4, colStartY + 28);
-  } else {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(15, 23, 42);
-    doc.text('ALL BRANCH LOCATIONS', branchX + 4, colStartY + 12);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(71, 85, 105);
-    doc.text(`Scope: All Branches System-wide`, branchX + 4, colStartY + 18);
-    doc.text(`Consolidated across all customer`, branchX + 4, colStartY + 23);
-    doc.text(`branches and central offices.`, branchX + 4, colStartY + 28);
   }
 
   // --- FINANCIAL METRICS SUMMARY BOX ---
