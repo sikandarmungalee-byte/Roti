@@ -1,14 +1,7 @@
 import { CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord } from '../types';
 import { initialCompanySettings, initialProducts, initialCustomers, initialInvoices, initialQuotations, initialDeliveryNotes, initialPayments } from '../data/seedData';
-
-const LEGACY_MOCK_IDS = new Set([
-  'prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5',
-  'cust-1', 'cust-2',
-  'inv-1', 'inv-2', 'inv-3',
-  'qt-1',
-  'dn-1', 'dn-2', 'dn-3',
-  'pay-1', 'pay-2'
-]);
+import { doc, collection, setDoc, getDocs, onSnapshot, writeBatch } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 const STORAGE_KEYS = {
   COMPANY: 'invoicepro_company',
@@ -20,158 +13,210 @@ const STORAGE_KEYS = {
   PAYMENTS: 'invoicepro_payments',
 };
 
-// Pure local offline mode notice
+// Sanitization helper to prevent Firestore "undefined value" errors
+function sanitizeForFirestore<T>(data: T): T {
+  if (data === undefined) return null as unknown as T;
+  return JSON.parse(JSON.stringify(data, (_key, value) => {
+    if (value === undefined) return null;
+    return value;
+  }));
+}
+
+// In-memory equality tracking to prevent infinite loops
+let lastCompanyJson = '';
+let lastProductsJson = '';
+let lastCustomersJson = '';
+let lastInvoicesJson = '';
+let lastQuotationsJson = '';
+let lastDeliveryNotesJson = '';
+let lastPaymentsJson = '';
+
 export async function testFirestoreConnection() {
-  console.log("Storage mode: Operating purely with local client-side offline storage.");
-}
-
-function isLegacyMockItem(item: any): boolean {
-  if (!item) return false;
-  if (item.id && LEGACY_MOCK_IDS.has(item.id)) return true;
-  const str = JSON.stringify(item);
-  return str.includes('Mzansi Wholesale') || str.includes('Protea Hospitality') || str.includes('Rooibos Tea') || str.includes('Kagiso Wholesale');
-}
-
-// Helper to check if stored data is legacy mock data and needs auto-purge
-function purgeLegacyMockDataIfNeeded() {
   try {
-    const compStr = localStorage.getItem(STORAGE_KEYS.COMPANY);
-    if (!compStr || compStr.includes('Mzansi')) {
-      localStorage.setItem(STORAGE_KEYS.COMPANY, JSON.stringify(initialCompanySettings));
-    }
-    
-    // Purge mock arrays if they contain test IDs or mock names from initial seed
-    [
-      STORAGE_KEYS.PRODUCTS,
-      STORAGE_KEYS.CUSTOMERS,
-      STORAGE_KEYS.INVOICES,
-      STORAGE_KEYS.QUOTATIONS,
-      STORAGE_KEYS.DELIVERY_NOTES,
-      STORAGE_KEYS.PAYMENTS
-    ].forEach(key => {
-      const itemStr = localStorage.getItem(key);
-      if (itemStr && (itemStr.includes('prod-1') || itemStr.includes('cust-1') || itemStr.includes('inv-1') || itemStr.includes('Mzansi') || itemStr.includes('Protea') || itemStr.includes('Rooibos'))) {
-        localStorage.removeItem(key);
-      }
-    });
+    const testDoc = doc(db, 'system', 'connection_test');
+    await setDoc(testDoc, { connectedAt: new Date().toISOString() }, { merge: true });
+    console.log("Firebase Firestore connected successfully!");
   } catch (e) {
-    console.error('Error purging legacy mock data:', e);
+    console.warn("Firestore connection check notice:", e);
   }
 }
 
-// Local Storage Handlers
+// Helper local sync without Firestore trigger loop
+function setLocalOnly(key: string, value: any) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error('Local storage write error:', e);
+  }
+}
+
+// --- Company Settings ---
 export function loadCompanySettings(): CompanySettings {
-  purgeLegacyMockDataIfNeeded();
   try {
     const data = localStorage.getItem(STORAGE_KEYS.COMPANY);
     return data ? JSON.parse(data) : initialCompanySettings;
   } catch (e) {
-    console.error('Failed to load company settings', e);
     return initialCompanySettings;
   }
 }
 
 export function saveCompanySettings(settings: CompanySettings): void {
-  localStorage.setItem(STORAGE_KEYS.COMPANY, JSON.stringify(settings));
+  const json = JSON.stringify(settings);
+  setLocalOnly(STORAGE_KEYS.COMPANY, settings);
+  if (json === lastCompanyJson) return;
+  lastCompanyJson = json;
+
+  setDoc(doc(db, 'company_settings', 'main'), sanitizeForFirestore(settings), { merge: true })
+    .catch(err => console.error('Error saving company settings to Firestore:', err));
 }
 
+// --- Products ---
 export function loadProducts(): Product[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    if (!data) return initialProducts;
-    const parsed = JSON.parse(data) as Product[];
-    return parsed.filter(p => !isLegacyMockItem(p));
+    return data ? (JSON.parse(data) as Product[]) : initialProducts;
   } catch (e) {
-    console.error('Failed to load products', e);
     return initialProducts;
   }
 }
 
 export function saveProducts(products: Product[]): void {
-  localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+  const json = JSON.stringify(products);
+  setLocalOnly(STORAGE_KEYS.PRODUCTS, products);
+  if (json === lastProductsJson) return;
+  lastProductsJson = json;
+
+  syncCollectionToFirestore('products', products)
+    .catch(err => console.error('Error syncing products to Firestore:', err));
 }
 
+// --- Customers ---
 export function loadCustomers(): Customer[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    if (!data) return initialCustomers;
-    const parsed = JSON.parse(data) as Customer[];
-    return parsed.filter(c => !isLegacyMockItem(c));
+    return data ? (JSON.parse(data) as Customer[]) : initialCustomers;
   } catch (e) {
-    console.error('Failed to load customers', e);
     return initialCustomers;
   }
 }
 
 export function saveCustomers(customers: Customer[]): void {
-  localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
+  const json = JSON.stringify(customers);
+  setLocalOnly(STORAGE_KEYS.CUSTOMERS, customers);
+  if (json === lastCustomersJson) return;
+  lastCustomersJson = json;
+
+  syncCollectionToFirestore('customers', customers)
+    .catch(err => console.error('Error syncing customers to Firestore:', err));
 }
 
+// --- Invoices ---
 export function loadInvoices(): Invoice[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.INVOICES);
-    if (!data) return initialInvoices;
-    const parsed = JSON.parse(data) as Invoice[];
-    return parsed.filter(i => !isLegacyMockItem(i));
+    return data ? (JSON.parse(data) as Invoice[]) : initialInvoices;
   } catch (e) {
-    console.error('Failed to load invoices', e);
     return initialInvoices;
   }
 }
 
 export function saveInvoices(invoices: Invoice[]): void {
-  localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
+  const json = JSON.stringify(invoices);
+  setLocalOnly(STORAGE_KEYS.INVOICES, invoices);
+  if (json === lastInvoicesJson) return;
+  lastInvoicesJson = json;
+
+  syncCollectionToFirestore('invoices', invoices)
+    .catch(err => console.error('Error syncing invoices to Firestore:', err));
 }
 
+// --- Quotations ---
 export function loadQuotations(): Quotation[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.QUOTATIONS);
-    if (!data) return initialQuotations;
-    const parsed = JSON.parse(data) as Quotation[];
-    return parsed.filter(q => !isLegacyMockItem(q));
+    return data ? (JSON.parse(data) as Quotation[]) : initialQuotations;
   } catch (e) {
-    console.error('Failed to load quotations', e);
     return initialQuotations;
   }
 }
 
 export function saveQuotations(quotations: Quotation[]): void {
-  localStorage.setItem(STORAGE_KEYS.QUOTATIONS, JSON.stringify(quotations));
+  const json = JSON.stringify(quotations);
+  setLocalOnly(STORAGE_KEYS.QUOTATIONS, quotations);
+  if (json === lastQuotationsJson) return;
+  lastQuotationsJson = json;
+
+  syncCollectionToFirestore('quotations', quotations)
+    .catch(err => console.error('Error syncing quotations to Firestore:', err));
 }
 
+// --- Delivery Notes ---
 export function loadDeliveryNotes(): DeliveryNote[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.DELIVERY_NOTES);
-    if (!data) return initialDeliveryNotes;
-    const parsed = JSON.parse(data) as DeliveryNote[];
-    return parsed.filter(d => !isLegacyMockItem(d));
+    return data ? (JSON.parse(data) as DeliveryNote[]) : initialDeliveryNotes;
   } catch (e) {
-    console.error('Failed to load delivery notes', e);
     return initialDeliveryNotes;
   }
 }
 
 export function saveDeliveryNotes(deliveryNotes: DeliveryNote[]): void {
-  localStorage.setItem(STORAGE_KEYS.DELIVERY_NOTES, JSON.stringify(deliveryNotes));
+  const json = JSON.stringify(deliveryNotes);
+  setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, deliveryNotes);
+  if (json === lastDeliveryNotesJson) return;
+  lastDeliveryNotesJson = json;
+
+  syncCollectionToFirestore('delivery_notes', deliveryNotes)
+    .catch(err => console.error('Error syncing delivery notes to Firestore:', err));
 }
 
+// --- Payments ---
 export function loadPayments(): PaymentRecord[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-    if (!data) return initialPayments;
-    const parsed = JSON.parse(data) as PaymentRecord[];
-    return parsed.filter(p => !isLegacyMockItem(p));
+    return data ? (JSON.parse(data) as PaymentRecord[]) : initialPayments;
   } catch (e) {
-    console.error('Failed to load payments', e);
     return initialPayments;
   }
 }
 
 export function savePayments(payments: PaymentRecord[]): void {
-  localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
+  const json = JSON.stringify(payments);
+  setLocalOnly(STORAGE_KEYS.PAYMENTS, payments);
+  if (json === lastPaymentsJson) return;
+  lastPaymentsJson = json;
+
+  syncCollectionToFirestore('payments', payments)
+    .catch(err => console.error('Error syncing payments to Firestore:', err));
 }
 
-// Local Storage Subscriber Hook
+// Batch Sync helper to update Firestore collection documents efficiently
+async function syncCollectionToFirestore(colName: string, items: Array<{ id: string } & Record<string, any>>) {
+  try {
+    const snap = await getDocs(collection(db, colName));
+    const existingIds = new Set(snap.docs.map(d => d.id));
+    const currentIds = new Set(items.map(item => item.id));
+
+    const batch = writeBatch(db);
+    items.forEach(item => {
+      if (item.id) {
+        batch.set(doc(db, colName, item.id), sanitizeForFirestore(item), { merge: true });
+      }
+    });
+
+    existingIds.forEach(id => {
+      if (!currentIds.has(id)) {
+        batch.delete(doc(db, colName, id));
+      }
+    });
+
+    await batch.commit();
+  } catch (e) {
+    console.error(`Firestore collection batch sync failed for [${colName}]:`, e);
+  }
+}
+
+// --- Realtime Firestore Subscriber Hook ---
 export function subscribeToFirestore(callbacks: {
   onCompanyUpdate?: (data: CompanySettings) => void;
   onProductsUpdate?: (data: Product[]) => void;
@@ -181,18 +226,111 @@ export function subscribeToFirestore(callbacks: {
   onDeliveryNotesUpdate?: (data: DeliveryNote[]) => void;
   onPaymentsUpdate?: (data: PaymentRecord[]) => void;
 }) {
-  // Load local storage values and push to callbacks once
-  setTimeout(() => {
-    callbacks.onCompanyUpdate?.(loadCompanySettings());
-    callbacks.onProductsUpdate?.(loadProducts());
-    callbacks.onCustomersUpdate?.(loadCustomers());
-    callbacks.onInvoicesUpdate?.(loadInvoices());
-    callbacks.onQuotationsUpdate?.(loadQuotations());
-    callbacks.onDeliveryNotesUpdate?.(loadDeliveryNotes());
-    callbacks.onPaymentsUpdate?.(loadPayments());
-  }, 0);
+  const unsubs: Array<() => void> = [];
 
-  return () => {};
+  // 1. Company Settings
+  unsubs.push(
+    onSnapshot(doc(db, 'company_settings', 'main'), snap => {
+      if (snap.exists()) {
+        const settings = snap.data() as CompanySettings;
+        lastCompanyJson = JSON.stringify(settings);
+        setLocalOnly(STORAGE_KEYS.COMPANY, settings);
+        callbacks.onCompanyUpdate?.(settings);
+      } else {
+        // Seed if empty
+        const initial = loadCompanySettings();
+        saveCompanySettings(initial);
+      }
+    }, err => console.warn('Company settings listener fallback:', err))
+  );
+
+  // 2. Products
+  unsubs.push(
+    onSnapshot(collection(db, 'products'), snap => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => d.data() as Product);
+        lastProductsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.PRODUCTS, list);
+        callbacks.onProductsUpdate?.(list);
+      } else {
+        saveProducts(loadProducts());
+      }
+    }, err => console.warn('Products listener fallback:', err))
+  );
+
+  // 3. Customers
+  unsubs.push(
+    onSnapshot(collection(db, 'customers'), snap => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => d.data() as Customer);
+        lastCustomersJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.CUSTOMERS, list);
+        callbacks.onCustomersUpdate?.(list);
+      } else {
+        saveCustomers(loadCustomers());
+      }
+    }, err => console.warn('Customers listener fallback:', err))
+  );
+
+  // 4. Invoices
+  unsubs.push(
+    onSnapshot(collection(db, 'invoices'), snap => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => d.data() as Invoice);
+        lastInvoicesJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.INVOICES, list);
+        callbacks.onInvoicesUpdate?.(list);
+      } else {
+        saveInvoices(loadInvoices());
+      }
+    }, err => console.warn('Invoices listener fallback:', err))
+  );
+
+  // 5. Quotations
+  unsubs.push(
+    onSnapshot(collection(db, 'quotations'), snap => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => d.data() as Quotation);
+        lastQuotationsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.QUOTATIONS, list);
+        callbacks.onQuotationsUpdate?.(list);
+      } else {
+        saveQuotations(loadQuotations());
+      }
+    }, err => console.warn('Quotations listener fallback:', err))
+  );
+
+  // 6. Delivery Notes
+  unsubs.push(
+    onSnapshot(collection(db, 'delivery_notes'), snap => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => d.data() as DeliveryNote);
+        lastDeliveryNotesJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, list);
+        callbacks.onDeliveryNotesUpdate?.(list);
+      } else {
+        saveDeliveryNotes(loadDeliveryNotes());
+      }
+    }, err => console.warn('Delivery notes listener fallback:', err))
+  );
+
+  // 7. Payments
+  unsubs.push(
+    onSnapshot(collection(db, 'payments'), snap => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => d.data() as PaymentRecord);
+        lastPaymentsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.PAYMENTS, list);
+        callbacks.onPaymentsUpdate?.(list);
+      } else {
+        savePayments(loadPayments());
+      }
+    }, err => console.warn('Payments listener fallback:', err))
+  );
+
+  return () => {
+    unsubs.forEach(unsub => unsub());
+  };
 }
 
 export function resetAllDataToDefault(): void {

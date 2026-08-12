@@ -138,10 +138,10 @@ export const Navigation: React.FC<Props> = ({
               <button
                 onClick={onOpenCompanySettings}
                 className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 rounded-lg text-[11px] font-bold border border-emerald-500/40 transition"
-                title="Your database is stored 100% locally on your browser. No cloud, 0 fees."
+                title="Your database is synchronized live with Firebase Cloud Database."
               >
                 <Database className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Local DB (Free)</span>
+                <span>Cloud DB (Synced)</span>
               </button>
 
               <button

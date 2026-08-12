@@ -311,23 +311,23 @@ export const CompanySettingsModal: React.FC<Props> = ({ isOpen, onClose, setting
             </div>
           </div>
 
-          {/* Local Free Database Storage & Backup */}
+          {/* Firebase Cloud Database & Backup */}
           <div className="space-y-3 bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Database className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                  Local Database Storage (100% Free & Offline)
+                  Firebase Cloud Database (Live Cloud Sync)
                 </h3>
               </div>
               <span className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                No Cloud / 0 Fee
+                Cloud Active
               </span>
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              Your database is stored <strong>locally in your browser</strong> (LocalStorage). All invoices, customers, products, and financial logs are completely private on your device without any cloud connection or external database hosting charges.
+              Your database is connected to <strong>Firebase Cloud Database (Firestore)</strong>. All products, customers, invoices, and settings automatically synchronize live across sessions and devices so your data is never lost.
             </p>
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">

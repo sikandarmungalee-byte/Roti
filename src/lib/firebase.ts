@@ -1,7 +1,14 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import rawConfig from '../../firebase-applet-config.json';
+
+let rawConfig: Record<string, string> = {};
+try {
+  // @ts-ignore
+  rawConfig = import.meta.glob('../../firebase-applet-config.json', { eager: true, import: 'default' })['../../firebase-applet-config.json'] || {};
+} catch (e) {
+  rawConfig = {};
+}
 
 const metaEnv = (import.meta as unknown as { env?: Record<string, string> }).env || {};
 
@@ -15,7 +22,6 @@ const firebaseConfig = {
   messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || rawConfig?.messagingSenderId || '',
 };
 
-
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
@@ -28,4 +34,5 @@ export const db = initializeFirestore(app, {
 
 export const auth = getAuth(app);
 export default app;
+
 
