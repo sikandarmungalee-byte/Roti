@@ -1,6 +1,6 @@
 import { CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord } from '../types';
 import { initialCompanySettings, initialProducts, initialCustomers, initialInvoices, initialQuotations, initialDeliveryNotes, initialPayments } from '../data/seedData';
-import { doc, collection, setDoc, getDocs, onSnapshot, writeBatch } from 'firebase/firestore';
+import { doc, collection, setDoc, deleteDoc, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const STORAGE_KEYS = {
@@ -13,13 +13,21 @@ const STORAGE_KEYS = {
   PAYMENTS: 'invoicepro_payments',
 };
 
-// Sanitization helper to prevent Firestore "undefined value" errors
+// Sanitization helper to prevent Firestore "undefined value" and document size limit errors
 function sanitizeForFirestore<T>(data: T): T {
   if (data === undefined) return null as unknown as T;
-  return JSON.parse(JSON.stringify(data, (_key, value) => {
+  
+  // Custom replacer to clean undefined and trim overly long base64 file data URLs to stay under 1MB
+  const sanitizedJson = JSON.stringify(data, (key, value) => {
     if (value === undefined) return null;
+    if (key === 'fileDataUrl' && typeof value === 'string' && value.length > 500000) {
+      // Truncate giant base64 strings for cloud storage safety so document stays under 1MB limit
+      return value.slice(0, 100) + '...[file_stored_locally]';
+    }
     return value;
-  }));
+  });
+
+  return JSON.parse(sanitizedJson);
 }
 
 // In-memory equality tracking to prevent infinite loops
@@ -41,12 +49,39 @@ export async function testFirestoreConnection() {
   }
 }
 
-// Helper local sync without Firestore trigger loop
+// Helper local sync
 function setLocalOnly(key: string, value: any) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
     console.error('Local storage write error:', e);
+  }
+}
+
+// Direct multi-doc sync helper: writes items immediately via setDoc
+async function syncCollectionToFirestore(colName: string, items: Array<{ id: string } & Record<string, any>>) {
+  if (!items) return;
+  try {
+    // 1. Save / Update all items in parallel using setDoc
+    const savePromises = items.map(item => {
+      if (!item || !item.id) return Promise.resolve();
+      const docRef = doc(db, colName, item.id);
+      return setDoc(docRef, sanitizeForFirestore(item), { merge: true });
+    });
+    await Promise.all(savePromises);
+
+    // 2. Cleanup deleted documents in background
+    getDocs(collection(db, colName)).then(snap => {
+      const currentIds = new Set(items.map(item => item.id));
+      snap.docs.forEach(d => {
+        if (!currentIds.has(d.id)) {
+          deleteDoc(doc(db, colName, d.id)).catch(err => console.warn(`Delete failed for ${d.id}:`, err));
+        }
+      });
+    }).catch(() => {});
+
+  } catch (e) {
+    console.error(`Firestore sync failed for collection [${colName}]:`, e);
   }
 }
 
@@ -86,8 +121,7 @@ export function saveProducts(products: Product[]): void {
   if (json === lastProductsJson) return;
   lastProductsJson = json;
 
-  syncCollectionToFirestore('products', products)
-    .catch(err => console.error('Error syncing products to Firestore:', err));
+  syncCollectionToFirestore('products', products);
 }
 
 // --- Customers ---
@@ -101,13 +135,19 @@ export function loadCustomers(): Customer[] {
 }
 
 export function saveCustomers(customers: Customer[]): void {
-  const json = JSON.stringify(customers);
-  setLocalOnly(STORAGE_KEYS.CUSTOMERS, customers);
+  // Ensure branches and documents default to arrays
+  const sanitizedCustomers = customers.map(c => ({
+    ...c,
+    branches: c.branches || [],
+    documents: c.documents || []
+  }));
+
+  const json = JSON.stringify(sanitizedCustomers);
+  setLocalOnly(STORAGE_KEYS.CUSTOMERS, sanitizedCustomers);
   if (json === lastCustomersJson) return;
   lastCustomersJson = json;
 
-  syncCollectionToFirestore('customers', customers)
-    .catch(err => console.error('Error syncing customers to Firestore:', err));
+  syncCollectionToFirestore('customers', sanitizedCustomers);
 }
 
 // --- Invoices ---
@@ -126,8 +166,7 @@ export function saveInvoices(invoices: Invoice[]): void {
   if (json === lastInvoicesJson) return;
   lastInvoicesJson = json;
 
-  syncCollectionToFirestore('invoices', invoices)
-    .catch(err => console.error('Error syncing invoices to Firestore:', err));
+  syncCollectionToFirestore('invoices', invoices);
 }
 
 // --- Quotations ---
@@ -146,8 +185,7 @@ export function saveQuotations(quotations: Quotation[]): void {
   if (json === lastQuotationsJson) return;
   lastQuotationsJson = json;
 
-  syncCollectionToFirestore('quotations', quotations)
-    .catch(err => console.error('Error syncing quotations to Firestore:', err));
+  syncCollectionToFirestore('quotations', quotations);
 }
 
 // --- Delivery Notes ---
@@ -166,8 +204,7 @@ export function saveDeliveryNotes(deliveryNotes: DeliveryNote[]): void {
   if (json === lastDeliveryNotesJson) return;
   lastDeliveryNotesJson = json;
 
-  syncCollectionToFirestore('delivery_notes', deliveryNotes)
-    .catch(err => console.error('Error syncing delivery notes to Firestore:', err));
+  syncCollectionToFirestore('delivery_notes', deliveryNotes);
 }
 
 // --- Payments ---
@@ -186,34 +223,7 @@ export function savePayments(payments: PaymentRecord[]): void {
   if (json === lastPaymentsJson) return;
   lastPaymentsJson = json;
 
-  syncCollectionToFirestore('payments', payments)
-    .catch(err => console.error('Error syncing payments to Firestore:', err));
-}
-
-// Batch Sync helper to update Firestore collection documents efficiently
-async function syncCollectionToFirestore(colName: string, items: Array<{ id: string } & Record<string, any>>) {
-  try {
-    const snap = await getDocs(collection(db, colName));
-    const existingIds = new Set(snap.docs.map(d => d.id));
-    const currentIds = new Set(items.map(item => item.id));
-
-    const batch = writeBatch(db);
-    items.forEach(item => {
-      if (item.id) {
-        batch.set(doc(db, colName, item.id), sanitizeForFirestore(item), { merge: true });
-      }
-    });
-
-    existingIds.forEach(id => {
-      if (!currentIds.has(id)) {
-        batch.delete(doc(db, colName, id));
-      }
-    });
-
-    await batch.commit();
-  } catch (e) {
-    console.error(`Firestore collection batch sync failed for [${colName}]:`, e);
-  }
+  syncCollectionToFirestore('payments', payments);
 }
 
 // --- Realtime Firestore Subscriber Hook ---
@@ -237,9 +247,7 @@ export function subscribeToFirestore(callbacks: {
         setLocalOnly(STORAGE_KEYS.COMPANY, settings);
         callbacks.onCompanyUpdate?.(settings);
       } else {
-        // Seed if empty
-        const initial = loadCompanySettings();
-        saveCompanySettings(initial);
+        saveCompanySettings(loadCompanySettings());
       }
     }, err => console.warn('Company settings listener fallback:', err))
   );
@@ -262,7 +270,14 @@ export function subscribeToFirestore(callbacks: {
   unsubs.push(
     onSnapshot(collection(db, 'customers'), snap => {
       if (!snap.empty) {
-        const list = snap.docs.map(d => d.data() as Customer);
+        const list = snap.docs.map(d => {
+          const c = d.data() as Customer;
+          return {
+            ...c,
+            branches: c.branches || [],
+            documents: c.documents || []
+          };
+        });
         lastCustomersJson = JSON.stringify(list);
         setLocalOnly(STORAGE_KEYS.CUSTOMERS, list);
         callbacks.onCustomersUpdate?.(list);
