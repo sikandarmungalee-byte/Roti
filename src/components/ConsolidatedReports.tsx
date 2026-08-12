@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Invoice, PaymentRecord, Customer, CompanySettings, ConsolidatedReportFilter, PeriodFilter } from '../types';
-import { BarChart3, Calendar, Filter, Download, DollarSign, TrendingUp, AlertCircle, Building2, GitBranch, CheckCircle2, FileSpreadsheet } from 'lucide-react';
+import { BarChart3, Calendar, Filter, Download, DollarSign, TrendingUp, AlertCircle, Building2, GitBranch, CheckCircle2, FileSpreadsheet, UserCheck, MapPin, Mail, Phone, ShieldCheck } from 'lucide-react';
 import { generateConsolidatedReportPDF, formatCurrency } from '../utils/pdfGenerator';
 
 interface Props {
@@ -27,6 +27,7 @@ export const ConsolidatedReports: React.FC<Props> = ({
 
   const selectedCustomer = customers.find(c => c.id === filter.customerId);
   const availableBranches = selectedCustomer?.branches || [];
+  const selectedBranch = filter.branchId !== 'all' ? availableBranches.find(b => b.id === filter.branchId) : undefined;
 
   // Date filtering logic based on period
   const getPeriodDateRange = (period: PeriodFilter): { start: Date; end: Date; label: string } => {
@@ -249,6 +250,116 @@ export const ConsolidatedReports: React.FC<Props> = ({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Report Entity Audit Panel (Company Details, Customer Details, Branch Details) */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-amber-500" />
+            Report Letterhead & Entity Context Details
+          </h3>
+          <span className="text-[11px] font-mono text-slate-400">
+            Audit Ready • Scope: {periodLabel}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          
+          {/* Company Card */}
+          <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-lg border border-slate-200 dark:border-slate-700/60 space-y-2">
+            <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white pb-1 border-b border-slate-200 dark:border-slate-700">
+              <Building2 className="w-4 h-4 text-yellow-500 shrink-0" />
+              <span>Issuing Company Details</span>
+            </div>
+            <div>
+              <p className="font-extrabold text-slate-900 dark:text-white text-sm">{companySettings.name}</p>
+              {companySettings.tradingName && companySettings.tradingName !== companySettings.name && (
+                <p className="text-slate-500 dark:text-slate-400 text-[11px]">T/A: {companySettings.tradingName}</p>
+              )}
+            </div>
+            <div className="space-y-1 text-slate-600 dark:text-slate-300 text-[11px]">
+              <p><span className="font-semibold">Reg No:</span> {companySettings.registrationNumber || 'N/A'}</p>
+              <p><span className="font-semibold">Tax No:</span> {companySettings.taxNumber || 'N/A'} | <span className="font-semibold">VAT No:</span> {companySettings.vatNumber || 'N/A'}</p>
+              <p className="flex items-start gap-1"><MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" /> <span>{companySettings.address || 'Address not configured'}</span></p>
+              <p className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400 shrink-0" /> <span>{companySettings.phone || 'N/A'}</span></p>
+              <p className="flex items-center gap-1"><Mail className="w-3 h-3 text-slate-400 shrink-0" /> <span>{companySettings.email || 'N/A'}</span></p>
+              {companySettings.bankName && (
+                <p className="pt-1 text-[10px] text-slate-500 border-t border-slate-200 dark:border-slate-700">
+                  <span className="font-bold">Bank:</span> {companySettings.bankName} ({companySettings.accountNumber})
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Customer Card */}
+          <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-lg border border-slate-200 dark:border-slate-700/60 space-y-2">
+            <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white pb-1 border-b border-slate-200 dark:border-slate-700">
+              <UserCheck className="w-4 h-4 text-blue-500 shrink-0" />
+              <span>Customer Account Details</span>
+            </div>
+            {selectedCustomer ? (
+              <>
+                <div>
+                  <p className="font-extrabold text-slate-900 dark:text-white text-sm">{selectedCustomer.registeredName}</p>
+                  <p className="text-blue-600 dark:text-blue-400 font-mono text-[11px]">Code: {selectedCustomer.code}</p>
+                  {selectedCustomer.tradingName && selectedCustomer.tradingName !== selectedCustomer.registeredName && (
+                    <p className="text-slate-500 dark:text-slate-400 text-[11px]">T/A: {selectedCustomer.tradingName}</p>
+                  )}
+                </div>
+                <div className="space-y-1 text-slate-600 dark:text-slate-300 text-[11px]">
+                  <p><span className="font-semibold">Reg No:</span> {selectedCustomer.registrationNumber || 'N/A'}</p>
+                  <p><span className="font-semibold">Tax ID:</span> {selectedCustomer.taxNumber || 'N/A'} | <span className="font-semibold">VAT ID:</span> {selectedCustomer.vatNumber || 'N/A'}</p>
+                  <p className="flex items-start gap-1"><MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" /> <span>{selectedCustomer.address || 'No address registered'}</span></p>
+                  <p className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400 shrink-0" /> <span>{selectedCustomer.contactPerson} ({selectedCustomer.phone})</span></p>
+                  <p className="flex items-center gap-1"><Mail className="w-3 h-3 text-slate-400 shrink-0" /> <span>{selectedCustomer.email}</span></p>
+                </div>
+              </>
+            ) : (
+              <div className="py-3 space-y-1 text-slate-500 dark:text-slate-400">
+                <p className="font-bold text-slate-800 dark:text-slate-200">ALL REGISTERED CUSTOMERS</p>
+                <p className="text-[11px]">Consolidated report across all <span className="font-bold text-blue-600">{customers.length} customer accounts</span> in catalog.</p>
+                <p className="text-[10px] text-slate-400 italic">Select a specific customer in filters above to view detailed account audit info.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Branch Card */}
+          <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-lg border border-slate-200 dark:border-slate-700/60 space-y-2">
+            <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white pb-1 border-b border-slate-200 dark:border-slate-700">
+              <GitBranch className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span>Branch Location Details</span>
+            </div>
+            {selectedBranch ? (
+              <>
+                <div>
+                  <p className="font-extrabold text-slate-900 dark:text-white text-sm">{selectedBranch.name}</p>
+                  <p className="text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">Branch Code: {selectedBranch.code}</p>
+                </div>
+                <div className="space-y-1 text-slate-600 dark:text-slate-300 text-[11px]">
+                  <p><span className="font-semibold">Branch Reg No:</span> {selectedBranch.registrationNumber || 'N/A'}</p>
+                  <p><span className="font-semibold">Tax ID:</span> {selectedBranch.taxNumber || 'N/A'} | <span className="font-semibold">VAT ID:</span> {selectedBranch.vatNumber || 'N/A'}</p>
+                  <p className="flex items-start gap-1"><MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" /> <span>{selectedBranch.address || 'Location address N/A'}</span></p>
+                  <p className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400 shrink-0" /> <span>{selectedBranch.contactPerson} ({selectedBranch.phone})</span></p>
+                  <p className="flex items-center gap-1"><Mail className="w-3 h-3 text-slate-400 shrink-0" /> <span>{selectedBranch.email}</span></p>
+                </div>
+              </>
+            ) : selectedCustomer ? (
+              <div className="py-3 space-y-1 text-slate-500 dark:text-slate-400">
+                <p className="font-bold text-slate-800 dark:text-slate-200">ALL BRANCHES ({selectedCustomer.branches.length})</p>
+                <p className="text-[11px]">Consolidated across all registered branches for <span className="font-bold text-slate-700 dark:text-slate-200">{selectedCustomer.registeredName}</span>.</p>
+                <p className="text-[10px] text-slate-400 italic">Select a specific branch above to isolate branch report details.</p>
+              </div>
+            ) : (
+              <div className="py-3 space-y-1 text-slate-500 dark:text-slate-400">
+                <p className="font-bold text-slate-800 dark:text-slate-200">ALL SYSTEM BRANCHES</p>
+                <p className="text-[11px]">Consolidated report including all client branch locations nationwide.</p>
+                <p className="text-[10px] text-slate-400 italic">Select a customer and branch to view detailed location breakdown.</p>
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
 
       {/* Report Summary Metric Cards */}

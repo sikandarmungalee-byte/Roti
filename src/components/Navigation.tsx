@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CompanySettings } from '../types';
-import { FileText, FileCode, Truck, Package, Users, BarChart3, Building2, Menu, X, ShieldCheck, Plus, Sparkles, ChevronRight, Database } from 'lucide-react';
+import { FileText, FileCode, Truck, Package, Users, BarChart3, Building2, Menu, X, ShieldCheck, Plus, Sparkles, ChevronRight, Database, Lock } from 'lucide-react';
 
 export type NavTab = 'invoices' | 'quotations' | 'deliveryNotes' | 'products' | 'customers' | 'reports';
 
@@ -13,6 +13,7 @@ interface Props {
   onOpenCreateQuotation?: () => void;
   onOpenCreateProduct?: () => void;
   onOpenCreateCustomer?: () => void;
+  onLockApp?: () => void;
 }
 
 export const Navigation: React.FC<Props> = ({
@@ -23,7 +24,8 @@ export const Navigation: React.FC<Props> = ({
   onOpenCreateInvoice,
   onOpenCreateQuotation,
   onOpenCreateProduct,
-  onOpenCreateCustomer
+  onOpenCreateCustomer,
+  onLockApp
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickActionModalOpen, setQuickActionModalOpen] = useState(false);
@@ -159,6 +161,17 @@ export const Navigation: React.FC<Props> = ({
                 <Building2 className="w-4 h-4 text-yellow-400" />
                 Company Profile
               </button>
+
+              {onLockApp && (
+                <button
+                  onClick={onLockApp}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-red-950/70 hover:bg-red-900 text-red-300 rounded-lg text-xs font-bold border border-red-500/40 hover:border-red-400 transition"
+                  title="Lock application access"
+                >
+                  <Lock className="w-4 h-4 text-red-400" />
+                  <span>Lock</span>
+                </button>
+              )}
             </div>
 
             {/* Mobile Actions: Quick Action + Menu Toggle */}
@@ -170,6 +183,16 @@ export const Navigation: React.FC<Props> = ({
                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
                 <span>Action</span>
               </button>
+
+              {onLockApp && (
+                <button
+                  onClick={onLockApp}
+                  className="p-1.5 text-red-400 hover:text-red-300 bg-red-950/70 rounded-lg border border-red-500/30"
+                  title="Lock Application Access"
+                >
+                  <Lock className="w-4 h-4 text-red-400" />
+                </button>
+              )}
 
               <button
                 onClick={onOpenCompanySettings}

@@ -26,9 +26,26 @@ import { DeliveryNoteListModal } from './components/DeliveryNoteListModal';
 import { ConsolidatedReports } from './components/ConsolidatedReports';
 import { RecordPaymentModal } from './components/RecordPaymentModal';
 import { SendDocumentModal } from './components/SendDocumentModal';
+import { LockScreen } from './components/LockScreen';
 import { CheckCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
+  // App Access Security Lock (PIN: 8271)
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    return sessionStorage.getItem('isAppUnlocked') !== 'true';
+  });
+
+  const handleUnlock = () => {
+    sessionStorage.setItem('isAppUnlocked', 'true');
+    setIsLocked(false);
+    showToast('Application unlocked.');
+  };
+
+  const handleLock = () => {
+    sessionStorage.removeItem('isAppUnlocked');
+    setIsLocked(true);
+  };
+
   // Global State
   const [companySettings, setCompanySettings] = useState<CompanySettings>(loadCompanySettings);
   const [products, setProducts] = useState<Product[]>(loadProducts);
@@ -253,12 +270,21 @@ export default function App() {
   return (
     <div className="min-[#f8fafc] dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen flex flex-col font-sans">
       
+      {/* PIN Security Lock Screen */}
+      {isLocked && (
+        <LockScreen
+          onUnlock={handleUnlock}
+          requiredPin="8271"
+        />
+      )}
+
       {/* Top Navigation */}
       <Navigation
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         companySettings={companySettings}
         onOpenCompanySettings={() => setIsCompanySettingsOpen(true)}
+        onLockApp={handleLock}
         onOpenCreateInvoice={() => {
           setEditingInvoice(null);
           setIsInvoiceFormOpen(true);
