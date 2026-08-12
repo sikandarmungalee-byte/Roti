@@ -319,8 +319,8 @@ export const ProductManagement: React.FC<Props> = ({
                     type="number"
                     step="0.01"
                     required
-                    value={editingProduct.price ?? 0}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) || 0 })}
+                    value={editingProduct.price ? editingProduct.price : ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, price: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
                     placeholder="145.00"
                     className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
                   />

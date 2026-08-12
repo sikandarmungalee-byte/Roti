@@ -451,8 +451,9 @@ export const InvoiceFormModal: React.FC<Props> = ({
                           type="number"
                           step="0.01"
                           required
-                          value={item.unitPrice}
-                          onChange={(e) => handleUpdateItem(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
+                          value={item.unitPrice === 0 ? '' : item.unitPrice}
+                          onChange={(e) => handleUpdateItem(idx, 'unitPrice', e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
                           className="w-full p-1.5 border border-slate-200 dark:border-slate-700 rounded bg-white dark:bg-slate-800 text-right font-medium"
                         />
                       </td>

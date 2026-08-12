@@ -254,10 +254,16 @@ export default function App() {
     showToast(`Successfully converted Quotation ${q.quotationNumber} into Invoice ${invNo} and Delivery Note ${dnNo}!`);
   };
 
-  // Handlers for Delivery Note Status Updates
+  // Handlers for Delivery Note Status Updates & Deletion
   const handleUpdateDeliveryNoteStatus = (id: string, newStatus: DeliveryNote['status']) => {
     setDeliveryNotes(prev => prev.map(d => d.id === id ? { ...d, status: newStatus } : d));
     showToast('Delivery note status updated.');
+  };
+
+  const handleDeleteDeliveryNote = (id: string) => {
+    setDeliveryNotes(prev => prev.filter(d => d.id !== id));
+    deleteDocumentFromFirestore('delivery_notes', id);
+    showToast('Delivery note deleted.');
   };
 
   // Handlers for Payment Recording
@@ -363,6 +369,7 @@ export default function App() {
             customers={customers}
             companySettings={companySettings}
             onUpdateStatus={handleUpdateDeliveryNoteStatus}
+            onDeleteDeliveryNote={handleDeleteDeliveryNote}
           />
         )}
 

@@ -731,7 +731,7 @@ export function generateConsolidatedReportPDF(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(30, 41, 59);
-  doc.text('1. ISSUING COMPANY', 18, colStartY + 5);
+  doc.text('ISSUING COMPANY', 18, colStartY + 5);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
@@ -770,7 +770,7 @@ export function generateConsolidatedReportPDF(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(30, 41, 59);
-  doc.text('2. CUSTOMER DETAILS', custX + 4, colStartY + 5);
+  doc.text('CUSTOMER DETAILS', custX + 4, colStartY + 5);
 
   if (selCust) {
     doc.setFont('helvetica', 'bold');
@@ -821,7 +821,7 @@ export function generateConsolidatedReportPDF(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(30, 41, 59);
-    doc.text('3. BRANCH LOCATION', branchX + 4, colStartY + 5);
+    doc.text('BRANCH LOCATION', branchX + 4, colStartY + 5);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);

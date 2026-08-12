@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { DeliveryNote, Customer, CompanySettings, Invoice, Quotation } from '../types';
-import { Truck, Search, Download, CheckCircle, Clock, MapPin, Phone, FileText, FileCode } from 'lucide-react';
+import { Truck, Search, Download, CheckCircle, Clock, MapPin, Phone, FileText, FileCode, Trash2 } from 'lucide-react';
 import { generateDeliveryNotePDF, generateInvoicePDF, generateQuotationPDF } from '../utils/pdfGenerator';
 
 interface Props {
@@ -8,13 +8,15 @@ interface Props {
   customers: Customer[];
   companySettings: CompanySettings;
   onUpdateStatus: (id: string, newStatus: DeliveryNote['status']) => void;
+  onDeleteDeliveryNote?: (id: string) => void;
 }
 
 export const DeliveryNoteListModal: React.FC<Props> = ({
   deliveryNotes,
   customers,
   companySettings,
-  onUpdateStatus
+  onUpdateStatus,
+  onDeleteDeliveryNote
 }) => {
   const [search, setSearch] = useState('');
 
@@ -170,7 +172,7 @@ export const DeliveryNoteListModal: React.FC<Props> = ({
                   <span>Date: {dn.issueDate}</span>
                 </div>
 
-                {/* PDF Downloads */}
+                {/* PDF Downloads & Actions */}
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-1.5">
                   <button
                     onClick={() => handleDownloadPDF(dn)}
@@ -195,6 +197,20 @@ export const DeliveryNoteListModal: React.FC<Props> = ({
                     <FileCode className="w-3.5 h-3.5 text-yellow-400" />
                     Quote
                   </button>
+
+                  {onDeleteDeliveryNote && (
+                    <button
+                      onClick={() => {
+                        if (confirm(`Delete delivery note ${dn.deliveryNoteNumber}?`)) {
+                          onDeleteDeliveryNote(dn.id);
+                        }
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition ml-auto"
+                      title="Delete Delivery Note"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
 
               </div>
@@ -299,6 +315,21 @@ export const DeliveryNoteListModal: React.FC<Props> = ({
                             <FileCode className="w-3.5 h-3.5 text-yellow-400" />
                             Quote PDF
                           </button>
+
+                          {/* Delete Delivery Note */}
+                          {onDeleteDeliveryNote && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete delivery note ${dn.deliveryNoteNumber}?`)) {
+                                  onDeleteDeliveryNote(dn.id);
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
+                              title="Delete Delivery Note"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
