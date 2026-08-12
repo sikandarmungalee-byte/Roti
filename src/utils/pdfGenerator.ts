@@ -712,12 +712,13 @@ export function generateConsolidatedReportPDF(
 
   const colStartY = 37;
   const colWidth = 57;
+  const boxHeight = 52;
 
   // Box 1: COMPANY DETAILS
   doc.setFillColor(248, 250, 252);
-  doc.roundedRect(14, colStartY, colWidth, 42, 2, 2, 'F');
+  doc.roundedRect(14, colStartY, colWidth, boxHeight, 2, 2, 'F');
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(14, colStartY, colWidth, 42, 2, 2, 'S');
+  doc.roundedRect(14, colStartY, colWidth, boxHeight, 2, 2, 'S');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
@@ -742,6 +743,11 @@ export function generateConsolidatedReportPDF(
   cLine += 3.5;
   doc.text(`Tax: ${company.taxNumber || 'N/A'} | VAT: ${company.vatNumber || 'N/A'}`, 18, cLine);
   cLine += 3.5;
+  if (company.address) {
+    const compAddrLines = doc.splitTextToSize(company.address, colWidth - 8);
+    doc.text(compAddrLines, 18, cLine);
+    cLine += (compAddrLines.length * 3.5);
+  }
   doc.text(`Tel: ${company.phone || 'N/A'}`, 18, cLine);
   cLine += 3.5;
   doc.text(`Email: ${company.email || 'N/A'}`, 18, cLine);
@@ -749,9 +755,9 @@ export function generateConsolidatedReportPDF(
   // Box 2: CUSTOMER DETAILS
   const custX = 14 + colWidth + 4;
   doc.setFillColor(248, 250, 252);
-  doc.roundedRect(custX, colStartY, colWidth, 42, 2, 2, 'F');
+  doc.roundedRect(custX, colStartY, colWidth, boxHeight, 2, 2, 'F');
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(custX, colStartY, colWidth, 42, 2, 2, 'S');
+  doc.roundedRect(custX, colStartY, colWidth, boxHeight, 2, 2, 'S');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
@@ -773,13 +779,16 @@ export function generateConsolidatedReportPDF(
       doc.text(`T/A: ${selCust.tradingName}`, custX + 4, cuLine);
       cuLine += 3.5;
     }
-    doc.text(`Contact: ${selCust.contactPerson || 'N/A'}`, custX + 4, cuLine);
-    cuLine += 3.5;
-    doc.text(`Tel: ${selCust.phone || 'N/A'}`, custX + 4, cuLine);
-    cuLine += 3.5;
-    doc.text(`Email: ${selCust.email || 'N/A'}`, custX + 4, cuLine);
+    doc.text(`Reg: ${selCust.registrationNumber || 'N/A'}`, custX + 4, cuLine);
     cuLine += 3.5;
     doc.text(`Tax: ${selCust.taxNumber || 'N/A'} | VAT: ${selCust.vatNumber || 'N/A'}`, custX + 4, cuLine);
+    cuLine += 3.5;
+    if (selCust.address) {
+      const custAddrLines = doc.splitTextToSize(selCust.address, colWidth - 8);
+      doc.text(custAddrLines, custX + 4, cuLine);
+      cuLine += (custAddrLines.length * 3.5);
+    }
+    doc.text(`Contact: ${selCust.contactPerson || 'N/A'} (${selCust.phone || 'N/A'})`, custX + 4, cuLine);
   } else {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
@@ -796,9 +805,9 @@ export function generateConsolidatedReportPDF(
   // Box 3: BRANCH DETAILS
   const branchX = custX + colWidth + 4;
   doc.setFillColor(248, 250, 252);
-  doc.roundedRect(branchX, colStartY, colWidth, 42, 2, 2, 'F');
+  doc.roundedRect(branchX, colStartY, colWidth, boxHeight, 2, 2, 'F');
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(branchX, colStartY, colWidth, 42, 2, 2, 'S');
+  doc.roundedRect(branchX, colStartY, colWidth, boxHeight, 2, 2, 'S');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
@@ -816,13 +825,16 @@ export function generateConsolidatedReportPDF(
     doc.setFontSize(7.5);
     doc.setTextColor(71, 85, 105);
     let bLine = colStartY + 10 + (brNameLines.length * 3.5);
-    doc.text(`Contact: ${selBranch.contactPerson || 'N/A'}`, branchX + 4, bLine);
-    bLine += 3.5;
-    doc.text(`Tel: ${selBranch.phone || 'N/A'}`, branchX + 4, bLine);
-    bLine += 3.5;
-    doc.text(`Email: ${selBranch.email || 'N/A'}`, branchX + 4, bLine);
+    doc.text(`Branch Reg: ${selBranch.registrationNumber || 'N/A'}`, branchX + 4, bLine);
     bLine += 3.5;
     doc.text(`Tax: ${selBranch.taxNumber || 'N/A'} | VAT: ${selBranch.vatNumber || 'N/A'}`, branchX + 4, bLine);
+    bLine += 3.5;
+    if (selBranch.address) {
+      const brAddrLines = doc.splitTextToSize(selBranch.address, colWidth - 8);
+      doc.text(brAddrLines, branchX + 4, bLine);
+      bLine += (brAddrLines.length * 3.5);
+    }
+    doc.text(`Contact: ${selBranch.contactPerson || 'N/A'} (${selBranch.phone || 'N/A'})`, branchX + 4, bLine);
   } else if (selCust) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
@@ -848,7 +860,7 @@ export function generateConsolidatedReportPDF(
   }
 
   // --- FINANCIAL METRICS SUMMARY BOX ---
-  const summaryY = colStartY + 46;
+  const summaryY = colStartY + boxHeight + 4;
   const totalInvoiced = invoices.reduce((acc, i) => acc + i.totalAmount, 0);
   const totalCollected = invoices.reduce((acc, i) => acc + i.amountPaid, 0);
   const totalOutstanding = invoices.reduce((acc, i) => acc + i.balanceDue, 0);
