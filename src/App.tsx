@@ -26,6 +26,7 @@ import { DeliveryNoteListModal } from './components/DeliveryNoteListModal';
 import { ConsolidatedReports } from './components/ConsolidatedReports';
 import { RecordPaymentModal } from './components/RecordPaymentModal';
 import { SendDocumentModal } from './components/SendDocumentModal';
+import { DatabaseExplorerModal } from './components/DatabaseExplorerModal';
 import { LockScreen } from './components/LockScreen';
 import { CheckCircle, RefreshCw } from 'lucide-react';
 
@@ -68,6 +69,7 @@ export default function App() {
 
   // Modal States
   const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
+  const [isDatabaseExplorerOpen, setIsDatabaseExplorerOpen] = useState(false);
   const [isInvoiceFormOpen, setIsInvoiceFormOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
 
@@ -290,6 +292,7 @@ export default function App() {
         onSelectTab={setActiveTab}
         companySettings={companySettings}
         onOpenCompanySettings={() => setIsCompanySettingsOpen(true)}
+        onOpenDatabaseExplorer={() => setIsDatabaseExplorerOpen(true)}
         onLockApp={handleLock}
         onOpenCreateInvoice={() => {
           setEditingInvoice(null);
@@ -464,6 +467,28 @@ export default function App() {
           companySettings={companySettings}
         />
       )}
+
+      {/* Live Database Explorer Modal */}
+      <DatabaseExplorerModal
+        isOpen={isDatabaseExplorerOpen}
+        onClose={() => setIsDatabaseExplorerOpen(false)}
+        companySettings={companySettings}
+        products={products}
+        customers={customers}
+        invoices={invoices}
+        quotations={quotations}
+        deliveryNotes={deliveryNotes}
+        payments={payments}
+        onDeleteInvoice={handleDeleteInvoice}
+        onDeleteDeliveryNote={handleDeleteDeliveryNote}
+        onDeleteProduct={handleDeleteProduct}
+        onDeleteCustomer={handleDeleteCustomer}
+        onDeleteQuotation={handleDeleteQuotation}
+        onRefreshData={() => {
+          testFirestoreConnection();
+        }}
+        onShowToast={showToast}
+      />
 
     </div>
   );

@@ -959,5 +959,6 @@ export function generateConsolidatedReportPDF(
   doc.setTextColor(148, 163, 184);
   doc.text('This consolidated financial report contains full company, customer account, and branch audit trails.', 14, finalY);
 
-  doc.save(`Consolidated_Report_${periodLabel.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0,10)}.pdf`);
+  const safePeriod = periodLabel.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').slice(0, 45);
+  doc.save(`Report_${safePeriod}_${new Date().toISOString().slice(0,10)}.pdf`);
 }

@@ -9,6 +9,7 @@ interface Props {
   onSelectTab: (tab: NavTab) => void;
   companySettings: CompanySettings;
   onOpenCompanySettings: () => void;
+  onOpenDatabaseExplorer?: () => void;
   onOpenCreateInvoice?: () => void;
   onOpenCreateQuotation?: () => void;
   onOpenCreateProduct?: () => void;
@@ -21,6 +22,7 @@ export const Navigation: React.FC<Props> = ({
   onSelectTab,
   companySettings,
   onOpenCompanySettings,
+  onOpenDatabaseExplorer,
   onOpenCreateInvoice,
   onOpenCreateQuotation,
   onOpenCreateProduct,
@@ -40,6 +42,15 @@ export const Navigation: React.FC<Props> = ({
   ];
 
   const quickActions = [
+    {
+      title: 'Database Explorer (All Records)',
+      subtitle: 'View, search, inspect raw JSON & manage all database records',
+      icon: Database,
+      badge: 'Database',
+      action: () => {
+        onOpenDatabaseExplorer?.();
+      }
+    },
     {
       title: 'Create Tax Invoice',
       subtitle: 'Generate tax invoice & delivery note simultaneously',
@@ -138,12 +149,12 @@ export const Navigation: React.FC<Props> = ({
             {/* Right Action: Quick Action & Company Settings Button */}
             <div className="hidden md:flex items-center gap-2">
               <button
-                onClick={onOpenCompanySettings}
-                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 rounded-lg text-[11px] font-bold border border-emerald-500/40 transition"
-                title="Your database is synchronized live with Firebase Cloud Database."
+                onClick={onOpenDatabaseExplorer}
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 rounded-lg text-xs font-black border border-emerald-500/50 shadow-sm transition"
+                title="Open Live Database Explorer to view, search, and inspect all records"
               >
-                <Database className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Cloud DB (Synced)</span>
+                <Database className="w-4 h-4 text-emerald-400" />
+                <span>Database Explorer</span>
               </button>
 
               <button
@@ -176,6 +187,14 @@ export const Navigation: React.FC<Props> = ({
 
             {/* Mobile Actions: Quick Action + Menu Toggle */}
             <div className="flex md:hidden items-center gap-1.5">
+              <button
+                onClick={onOpenDatabaseExplorer}
+                className="p-1.5 text-emerald-400 hover:text-emerald-300 bg-emerald-950/80 rounded-lg border border-emerald-500/40"
+                title="Database Explorer"
+              >
+                <Database className="w-4 h-4" />
+              </button>
+
               <button
                 onClick={() => setQuickActionModalOpen(true)}
                 className="flex items-center gap-1 px-2.5 py-1.5 bg-yellow-400 hover:bg-yellow-500 text-black rounded-lg text-xs font-extrabold border border-yellow-500 shadow-sm"
@@ -216,6 +235,20 @@ export const Navigation: React.FC<Props> = ({
         {/* Mobile Drawer Menu */}
         {mobileMenuOpen && (
           <div className="lg:hidden border-t border-yellow-500/20 bg-black px-4 pt-2 pb-4 space-y-1 shadow-2xl">
+            <button
+              onClick={() => {
+                onOpenDatabaseExplorer?.();
+                setMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 mb-2"
+            >
+              <div className="flex items-center gap-3">
+                <Database className="w-5 h-5 text-emerald-400" />
+                <span>Database Explorer (All Records)</span>
+              </div>
+              <span className="text-[10px] bg-emerald-500/30 text-emerald-200 px-2 py-0.5 rounded-full font-mono">Live</span>
+            </button>
+
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;

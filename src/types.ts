@@ -154,7 +154,7 @@ export interface PaymentRecord {
   notes?: string;
 }
 
-export type PeriodFilter = 'weekly' | 'monthly' | '3month' | '6month' | 'yearly' | 'lifetime' | 'custom';
+export type PeriodFilter = 'weekly' | 'custom_weekly' | 'monthly' | '3month' | '6month' | 'yearly' | 'lifetime' | 'custom';
 
 export interface ConsolidatedReportFilter {
   period: PeriodFilter;
@@ -162,5 +162,8 @@ export interface ConsolidatedReportFilter {
   branchId?: string; // 'all' or specific
   startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD
+  weekOffset?: number; // 0 for current week, -1 for last week, etc.
+  selectedWeekStart?: string; // YYYY-MM-DD of Monday for a specific historical/custom week
+  customDaysCount?: number; // 7, 14, 21, 28, etc.
   searchKeyword?: string;
 }
