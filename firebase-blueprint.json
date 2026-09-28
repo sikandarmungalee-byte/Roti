@@ -91,6 +91,27 @@
         "invoiceNumber": { "type": "string font-mono" },
         "amount": { "type": "number" }
       }
+    },
+    "leads": {
+      "collection": "leads",
+      "fields": {
+        "id": { "type": "string" },
+        "leadNumber": { "type": "string" },
+        "name": { "type": "string" },
+        "companyName": { "type": "string" },
+        "email": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "communications": {
+      "collection": "communications",
+      "fields": {
+        "id": { "type": "string" },
+        "subject": { "type": "string" },
+        "folder": { "type": "string" },
+        "status": { "type": "string" },
+        "date": { "type": "string" }
+      }
     }
   }
 }

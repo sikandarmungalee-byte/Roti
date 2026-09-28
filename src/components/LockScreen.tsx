@@ -154,12 +154,17 @@ export const LockScreen: React.FC<Props> = ({ onUnlock, requiredPin = '8271' }) 
         </div>
 
         {/* Footer info */}
-        <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 font-mono">
-          <span className="flex items-center gap-1">
+        <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+          <span className="flex items-center gap-1 text-slate-400">
             <ShieldCheck className="w-3.5 h-3.5 text-yellow-500" />
-            Protected
+            PIN: <strong className="text-yellow-400 font-bold">8271</strong>
           </span>
-          <span>Security Lock Active</span>
+          <button
+            onClick={() => verifyPin(requiredPin)}
+            className="text-xs text-yellow-400 hover:text-yellow-300 font-bold underline cursor-pointer"
+          >
+            Quick Unlock
+          </button>
         </div>
 
       </div>

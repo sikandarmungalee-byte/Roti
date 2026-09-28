@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeFirestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 let rawConfig: Record<string, string> = {};
@@ -38,11 +38,20 @@ const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatab
   ? firebaseConfig.firestoreDatabaseId
   : undefined;
 
-export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
-}, dbId);
+let firestoreDb: any;
+try {
+  firestoreDb = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+  }, dbId);
+} catch (e) {
+  try {
+    firestoreDb = dbId ? getFirestore(app, dbId) : getFirestore(app);
+  } catch (err) {
+    console.error('Firestore init error:', err);
+    firestoreDb = getFirestore(app);
+  }
+}
 
+export const db = firestoreDb;
 export const auth = getAuth(app);
 export default app;
-
-

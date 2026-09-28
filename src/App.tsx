@@ -15,7 +15,11 @@ import {
   FAKE_LEAD_IDS, FAKE_EMAIL_IDS,
   subscribeToFirestore,
   testFirestoreConnection,
-  deleteDocumentFromFirestore
+  saveSingleDocumentToFirestore,
+  deleteDocumentFromFirestore,
+  pushAllLocalDataToFirestore,
+  pullAllFromFirestore,
+  onSyncStatusChange
 } from './utils/storage';
 
 import { Navigation, NavTab } from './components/Navigation';
@@ -35,18 +39,20 @@ import { LockScreen } from './components/LockScreen';
 import { CheckCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  // App Access Security Lock (PIN: 8271)
+  // App Access Security Lock (PIN: 8271) - Remember unlock on this device
   const [isLocked, setIsLocked] = useState<boolean>(() => {
-    return sessionStorage.getItem('isAppUnlocked') !== 'true';
+    return localStorage.getItem('isAppUnlocked') !== 'true' && sessionStorage.getItem('isAppUnlocked') !== 'true';
   });
 
   const handleUnlock = () => {
+    localStorage.setItem('isAppUnlocked', 'true');
     sessionStorage.setItem('isAppUnlocked', 'true');
     setIsLocked(false);
     showToast('Application unlocked.');
   };
 
   const handleLock = () => {
+    localStorage.removeItem('isAppUnlocked');
     sessionStorage.removeItem('isAppUnlocked');
     setIsLocked(true);
   };
@@ -61,6 +67,14 @@ export default function App() {
   const [payments, setPayments] = useState<PaymentRecord[]>(loadPayments);
   const [leads, setLeads] = useState<Lead[]>(() => loadLeads().filter(l => !FAKE_LEAD_IDS.has(l.id)));
   const [communications, setCommunications] = useState<CommunicationEmail[]>(() => loadCommunications().filter(c => !FAKE_EMAIL_IDS.has(c.id)));
+
+  // Cloud Sync Status State
+  const [syncStatus, setSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('connected');
+
+  useEffect(() => {
+    const unsubStatus = onSyncStatusChange(setSyncStatus);
+    return () => unsubStatus();
+  }, []);
 
   // Active View Tab
   const [activeTab, setActiveTab] = useState<NavTab>('invoices');
@@ -92,9 +106,28 @@ export default function App() {
   const [autoOpenCompose, setAutoOpenCompose] = useState(false);
   const [autoOpenLead, setAutoOpenLead] = useState(false);
 
-  // Real-time Firestore Subscription & Connection Check
+  // Real-time Firestore Subscription & Initial Full-Sync
   useEffect(() => {
     testFirestoreConnection();
+
+    // Pull from cloud immediately on startup so phones get desktop's latest data
+    pullAllFromFirestore().then(cloudData => {
+      if (cloudData.company) setCompanySettings(cloudData.company);
+      if (cloudData.products && cloudData.products.length > 0) setProducts(cloudData.products);
+      if (cloudData.customers && cloudData.customers.length > 0) setCustomers(cloudData.customers);
+      if (cloudData.invoices && cloudData.invoices.length > 0) setInvoices(cloudData.invoices);
+      if (cloudData.quotations && cloudData.quotations.length > 0) setQuotations(cloudData.quotations);
+      if (cloudData.deliveryNotes && cloudData.deliveryNotes.length > 0) setDeliveryNotes(cloudData.deliveryNotes);
+      if (cloudData.payments && cloudData.payments.length > 0) setPayments(cloudData.payments);
+      if (cloudData.leads && cloudData.leads.length > 0) setLeads(cloudData.leads);
+      if (cloudData.communications && cloudData.communications.length > 0) setCommunications(cloudData.communications);
+
+      // Also ensure any desktop local items are securely mirrored to the cloud
+      pushAllLocalDataToFirestore();
+    }).catch(() => {
+      pushAllLocalDataToFirestore();
+    });
+
     const unsub = subscribeToFirestore({
       onCompanyUpdate: setCompanySettings,
       onProductsUpdate: setProducts,
@@ -109,7 +142,7 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Persistence Effects
+  // Persistence Effects to LocalStorage & Firestore
   useEffect(() => saveCompanySettings(companySettings), [companySettings]);
   useEffect(() => saveProducts(products), [products]);
   useEffect(() => saveCustomers(customers), [customers]);
@@ -119,6 +152,33 @@ export default function App() {
   useEffect(() => savePayments(payments), [payments]);
   useEffect(() => saveLeads(leads), [leads]);
   useEffect(() => saveCommunications(communications), [communications]);
+
+  // Manual Trigger to Force Immediate Cloud Sync
+  const handleManualSync = async () => {
+    showToast('Synchronizing with Firestore cloud...');
+    await pushAllLocalDataToFirestore({
+      company: companySettings,
+      products,
+      customers,
+      invoices,
+      quotations,
+      deliveryNotes,
+      payments,
+      leads,
+      communications
+    });
+    const cloudData = await pullAllFromFirestore();
+    if (cloudData.company) setCompanySettings(cloudData.company);
+    if (cloudData.products && cloudData.products.length > 0) setProducts(cloudData.products);
+    if (cloudData.customers && cloudData.customers.length > 0) setCustomers(cloudData.customers);
+    if (cloudData.invoices && cloudData.invoices.length > 0) setInvoices(cloudData.invoices);
+    if (cloudData.quotations && cloudData.quotations.length > 0) setQuotations(cloudData.quotations);
+    if (cloudData.deliveryNotes && cloudData.deliveryNotes.length > 0) setDeliveryNotes(cloudData.deliveryNotes);
+    if (cloudData.payments && cloudData.payments.length > 0) setPayments(cloudData.payments);
+    if (cloudData.leads && cloudData.leads.length > 0) setLeads(cloudData.leads);
+    if (cloudData.communications && cloudData.communications.length > 0) setCommunications(cloudData.communications);
+    showToast('All synced! Phone and computer are 100% up to date.');
+  };
 
   // Handlers for Products
   const handleSaveProduct = (prod: Product) => {
@@ -131,7 +191,8 @@ export default function App() {
       }
       return [prod, ...prev];
     });
-    showToast(`Product "${prod.name}" saved successfully.`);
+    saveSingleDocumentToFirestore('products', prod.id, prod);
+    showToast(`Product "${prod.name}" saved and synced to cloud.`);
   };
 
   const handleDeleteProduct = (id: string) => {
@@ -151,7 +212,8 @@ export default function App() {
       }
       return [cust, ...prev];
     });
-    showToast(`Customer "${cust.registeredName}" updated.`);
+    saveSingleDocumentToFirestore('customers', cust.id, cust);
+    showToast(`Customer "${cust.registeredName}" saved and synced to cloud.`);
   };
 
   const handleDeleteCustomer = (id: string) => {
@@ -182,7 +244,9 @@ export default function App() {
       return [newDeliveryNote, ...prev];
     });
 
-    showToast(`Invoice ${newInvoice.invoiceNumber} and Delivery Note ${newDeliveryNote.deliveryNoteNumber} generated simultaneously!`);
+    saveSingleDocumentToFirestore('invoices', newInvoice.id, newInvoice);
+    saveSingleDocumentToFirestore('delivery_notes', newDeliveryNote.id, newDeliveryNote);
+    showToast(`Invoice ${newInvoice.invoiceNumber} and Delivery Note ${newDeliveryNote.deliveryNoteNumber} generated and synced!`);
   };
 
   const handleDeleteInvoice = (id: string) => {
@@ -202,7 +266,8 @@ export default function App() {
       }
       return [q, ...prev];
     });
-    showToast(`Quotation ${q.quotationNumber} saved.`);
+    saveSingleDocumentToFirestore('quotations', q.id, q);
+    showToast(`Quotation ${q.quotationNumber} saved and synced.`);
   };
 
   const handleDeleteQuotation = (id: string) => {
@@ -262,15 +327,30 @@ export default function App() {
     setDeliveryNotes(prev => [newDN, ...prev]);
 
     // Update Quotation status to Accepted
-    setQuotations(prev => prev.map(item => item.id === q.id ? { ...item, status: 'Accepted', convertedInvoiceId: newInv.id } : item));
+    const updatedQuote = { ...q, status: 'Accepted' as const, convertedInvoiceId: newInv.id };
+    setQuotations(prev => prev.map(item => item.id === q.id ? updatedQuote : item));
+
+    saveSingleDocumentToFirestore('invoices', newInv.id, newInv);
+    saveSingleDocumentToFirestore('delivery_notes', newDN.id, newDN);
+    saveSingleDocumentToFirestore('quotations', q.id, updatedQuote);
 
     setActiveTab('invoices');
-    showToast(`Successfully converted Quotation ${q.quotationNumber} into Invoice ${invNo} and Delivery Note ${dnNo}!`);
+    showToast(`Converted Quotation ${q.quotationNumber} into Invoice ${invNo} and Delivery Note ${dnNo}!`);
   };
 
   // Handlers for Delivery Note Status Updates & Deletion
   const handleUpdateDeliveryNoteStatus = (id: string, newStatus: DeliveryNote['status']) => {
-    setDeliveryNotes(prev => prev.map(d => d.id === id ? { ...d, status: newStatus } : d));
+    setDeliveryNotes(prev => {
+      const updated = prev.map(d => {
+        if (d.id === id) {
+          const u = { ...d, status: newStatus };
+          saveSingleDocumentToFirestore('delivery_notes', id, u);
+          return u;
+        }
+        return d;
+      });
+      return updated;
+    });
     showToast('Delivery note status updated.');
   };
 
@@ -284,6 +364,8 @@ export default function App() {
   const handleSavePayment = (payment: PaymentRecord, updatedInvoice: Invoice) => {
     setPayments(prev => [payment, ...prev]);
     setInvoices(prev => prev.map(i => i.id === updatedInvoice.id ? updatedInvoice : i));
+    saveSingleDocumentToFirestore('payments', payment.id, payment);
+    saveSingleDocumentToFirestore('invoices', updatedInvoice.id, updatedInvoice);
     showToast(`Payment of ${companySettings.currencySymbol}${payment.amount.toFixed(2)} recorded against ${updatedInvoice.invoiceNumber}.`);
   };
 
@@ -298,6 +380,8 @@ export default function App() {
       }
       return [lead, ...prev];
     });
+    saveSingleDocumentToFirestore('leads', lead.id, lead);
+    showToast(`Lead "${lead.name}" saved and synced.`);
   };
 
   const handleDeleteLead = (id: string) => {
@@ -317,6 +401,7 @@ export default function App() {
       }
       return [comm, ...prev];
     });
+    saveSingleDocumentToFirestore('communications', comm.id, comm);
   };
 
   const handleDeleteCommunication = (id: string) => {
@@ -395,7 +480,48 @@ export default function App() {
           setAutoOpenCustomer(true);
           setTimeout(() => setAutoOpenCustomer(false), 300);
         }}
+        syncStatus={syncStatus}
+        onManualSync={handleManualSync}
       />
+
+      {/* Real-time Cross-Device Sync Status Strip */}
+      <div className="bg-slate-900 border-b border-slate-800 text-xs px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+        <div className="flex items-center gap-2">
+          {syncStatus === 'syncing' ? (
+            <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+          ) : syncStatus === 'connected' ? (
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          ) : (
+            <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+          )}
+          <span className="text-slate-300 font-medium text-[11px] sm:text-xs">
+            {syncStatus === 'syncing' ? (
+              <span className="text-blue-300 font-semibold">Synchronizing with Firestore cloud...</span>
+            ) : syncStatus === 'connected' ? (
+              <span>
+                <strong className="text-emerald-400 font-bold">Live Cloud Synced</strong> • Phone & Computer in sync ({products.length} {products.length === 1 ? 'product' : 'products'}, {customers.length} {customers.length === 1 ? 'customer' : 'customers'}, {invoices.length} {invoices.length === 1 ? 'invoice' : 'invoices'})
+              </span>
+            ) : (
+              <span className="text-amber-300 font-semibold">Offline Mode • Changes cached locally</span>
+            )}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto">
+          <button
+            onClick={handleManualSync}
+            disabled={syncStatus === 'syncing'}
+            className="flex items-center gap-1.5 px-2.5 py-0.5 bg-yellow-400 hover:bg-yellow-500 text-black rounded font-black text-[11px] transition shadow-xs active:scale-95 disabled:opacity-50"
+            title="Force immediate synchronization between phone and desktop"
+          >
+            <RefreshCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+            <span>Sync Now</span>
+          </button>
+        </div>
+      </div>
 
       {/* Floating Toast Notification */}
       {toastMessage && (
@@ -592,9 +718,7 @@ export default function App() {
         onDeleteQuotation={handleDeleteQuotation}
         onDeleteLead={handleDeleteLead}
         onDeleteCommunication={handleDeleteCommunication}
-        onRefreshData={() => {
-          testFirestoreConnection();
-        }}
+        onRefreshData={handleManualSync}
         onShowToast={showToast}
       />
 
