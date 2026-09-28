@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import {
-  CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord
+  CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord, Lead, CommunicationEmail
 } from '../types';
 import {
   Database, Search, Download, Upload, Trash2, Eye, Copy, Check,
   RefreshCw, FileText, FileCode, Truck, Package, Users, DollarSign,
   Building2, Layers, ShieldCheck, X, ExternalLink, HardDrive, CheckCircle2,
-  AlertCircle
+  AlertCircle, MessageSquare, Mail, UserCheck
 } from 'lucide-react';
 import { exportDatabaseJSON, importDatabaseJSON, deleteDocumentFromFirestore, testFirestoreConnection } from '../utils/storage';
 
@@ -20,16 +20,20 @@ interface Props {
   quotations: Quotation[];
   deliveryNotes: DeliveryNote[];
   payments: PaymentRecord[];
+  leads?: Lead[];
+  communications?: CommunicationEmail[];
   onDeleteInvoice?: (id: string) => void;
   onDeleteDeliveryNote?: (id: string) => void;
   onDeleteProduct?: (id: string) => void;
   onDeleteCustomer?: (id: string) => void;
   onDeleteQuotation?: (id: string) => void;
+  onDeleteLead?: (id: string) => void;
+  onDeleteCommunication?: (id: string) => void;
   onRefreshData?: () => void;
   onShowToast: (msg: string) => void;
 }
 
-type CollectionKey = 'all' | 'invoices' | 'delivery_notes' | 'quotations' | 'customers' | 'products' | 'payments' | 'company_settings';
+type CollectionKey = 'all' | 'invoices' | 'delivery_notes' | 'quotations' | 'customers' | 'products' | 'payments' | 'leads' | 'communications' | 'company_settings';
 
 export const DatabaseExplorerModal: React.FC<Props> = ({
   isOpen,
@@ -41,11 +45,15 @@ export const DatabaseExplorerModal: React.FC<Props> = ({
   quotations,
   deliveryNotes,
   payments,
+  leads = [],
+  communications = [],
   onDeleteInvoice,
   onDeleteDeliveryNote,
   onDeleteProduct,
   onDeleteCustomer,
   onDeleteQuotation,
+  onDeleteLead,
+  onDeleteCommunication,
   onRefreshData,
   onShowToast
 }) => {
@@ -66,8 +74,10 @@ export const DatabaseExplorerModal: React.FC<Props> = ({
     customers: customers.length,
     products: products.length,
     payments: payments.length,
+    leads: leads.length,
+    communications: communications.length,
     company_settings: 1,
-    all: invoices.length + deliveryNotes.length + quotations.length + customers.length + products.length + payments.length + 1
+    all: invoices.length + deliveryNotes.length + quotations.length + customers.length + products.length + payments.length + leads.length + communications.length + 1
   };
 
   const handleCopy = (text: string, id: string) => {
@@ -215,12 +225,44 @@ export const DatabaseExplorerModal: React.FC<Props> = ({
         collection: 'payments',
         collectionName: 'Payments',
         title: `Payment: R ${pay.amount.toFixed(2)}`,
-        subtitle: `Inv: ${pay.invoiceNumber} • Ref: ${pay.reference || 'None'}`,
+        subtitle: `Inv: ${pay.invoiceNumber} • Ref: ${pay.referenceNumber || 'None'}`,
         badge: pay.paymentMethod || 'EFT',
         badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
         date: pay.paymentDate,
         amount: `R ${pay.amount.toFixed(2)}`,
         raw: pay
+      });
+    });
+
+    // Leads
+    leads.forEach(lead => {
+      records.push({
+        id: lead.id,
+        collection: 'leads',
+        collectionName: 'Sales Leads',
+        title: `${lead.leadNumber} - ${lead.name}`,
+        subtitle: `${lead.companyName} • ${lead.phone || lead.email}`,
+        badge: lead.status || 'New',
+        badgeColor: lead.status === 'Won' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+        date: lead.createdAt,
+        amount: `R ${(lead.estimatedValue || 0).toLocaleString()}`,
+        raw: lead
+      });
+    });
+
+    // Communications
+    communications.forEach(comm => {
+      records.push({
+        id: comm.id,
+        collection: 'communications',
+        collectionName: 'Communications',
+        title: comm.subject,
+        subtitle: comm.folder === 'sent' ? `To: ${comm.recipient?.name || comm.recipient?.email}` : `From: ${comm.sender?.name || comm.sender?.email}`,
+        badge: comm.folder === 'sent' ? 'Sent' : (comm.status === 'unread' ? 'Unread' : 'Inbox'),
+        badgeColor: comm.status === 'unread' ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+        date: comm.date ? comm.date.slice(0, 10) : undefined,
+        amount: comm.direction === 'inbound' ? 'Inbound' : 'Outbound',
+        raw: comm
       });
     });
 
@@ -238,7 +280,7 @@ export const DatabaseExplorerModal: React.FC<Props> = ({
     });
 
     return records;
-  }, [invoices, deliveryNotes, quotations, customers, products, payments, companySettings]);
+  }, [invoices, deliveryNotes, quotations, customers, products, payments, leads, communications, companySettings]);
 
   // Filter records based on collection and search query
   const filteredRecords = useMemo(() => {
@@ -272,6 +314,10 @@ export const DatabaseExplorerModal: React.FC<Props> = ({
       onDeleteCustomer?.(record.id);
     } else if (record.collection === 'quotations') {
       onDeleteQuotation?.(record.id);
+    } else if (record.collection === 'leads') {
+      onDeleteLead?.(record.id);
+    } else if (record.collection === 'communications') {
+      onDeleteCommunication?.(record.id);
     } else {
       deleteDocumentFromFirestore(record.collection, record.id);
     }
@@ -288,6 +334,8 @@ export const DatabaseExplorerModal: React.FC<Props> = ({
     { id: 'delivery_notes', label: 'Delivery Notes', icon: Truck, count: counts.delivery_notes },
     { id: 'quotations', label: 'Quotations', icon: FileCode, count: counts.quotations },
     { id: 'customers', label: 'Customers & Branches', icon: Users, count: counts.customers },
+    { id: 'leads', label: 'Sales Leads', icon: UserCheck, count: counts.leads },
+    { id: 'communications', label: 'Communications & Emails', icon: Mail, count: counts.communications },
     { id: 'products', label: 'Products', icon: Package, count: counts.products },
     { id: 'payments', label: 'Payments', icon: DollarSign, count: counts.payments },
     { id: 'company_settings', label: 'Company Profile', icon: Building2, count: counts.company_settings },

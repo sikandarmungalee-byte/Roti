@@ -167,3 +167,60 @@ export interface ConsolidatedReportFilter {
   customDaysCount?: number; // 7, 14, 21, 28, etc.
   searchKeyword?: string;
 }
+
+// --- Communication & Leads Types ---
+export type LeadStatus = 'New' | 'Contacted' | 'Qualified' | 'Proposal' | 'Won' | 'Lost';
+export type LeadSource = 'Website' | 'Email' | 'Phone Call' | 'Referral' | 'Walk-in' | 'Social Media' | 'Other';
+export type LeadPriority = 'Low' | 'Medium' | 'High';
+
+export interface Lead {
+  id: string;
+  leadNumber: string; // e.g. "LD-1001"
+  name: string;
+  companyName: string;
+  email: string;
+  phone: string;
+  status: LeadStatus;
+  source: LeadSource;
+  priority: LeadPriority;
+  estimatedValue: number;
+  notes: string;
+  assignedTo?: string;
+  lastContactDate?: string; // YYYY-MM-DD
+  nextFollowUpDate?: string; // YYYY-MM-DD
+  convertedCustomerId?: string;
+  convertedQuotationId?: string;
+  createdAt: string; // YYYY-MM-DD
+  updatedAt: string; // ISO string
+}
+
+export type EmailFolder = 'inbox' | 'sent' | 'drafts' | 'all' | 'trash';
+export type EmailDirection = 'inbound' | 'outbound';
+export type EmailStatus = 'unread' | 'read' | 'replied' | 'sent' | 'draft' | 'archived';
+
+export interface EmailContact {
+  name: string;
+  email: string;
+}
+
+export interface CommunicationEmail {
+  id: string;
+  folder: EmailFolder;
+  direction: EmailDirection;
+  status: EmailStatus;
+  sender: EmailContact;
+  recipient: EmailContact;
+  cc?: string;
+  bcc?: string;
+  subject: string;
+  body: string;
+  date: string; // ISO string
+  leadId?: string;
+  leadNumber?: string;
+  customerId?: string;
+  customerName?: string;
+  relatedDocType?: 'Invoice' | 'Quotation' | 'DeliveryNote';
+  relatedDocNumber?: string;
+  starred?: boolean;
+  tags?: string[];
+}

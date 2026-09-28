@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord
+  CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord, Lead, CommunicationEmail
 } from './types';
 import {
   loadCompanySettings, saveCompanySettings,
@@ -10,6 +10,9 @@ import {
   loadQuotations, saveQuotations,
   loadDeliveryNotes, saveDeliveryNotes,
   loadPayments, savePayments,
+  loadLeads, saveLeads,
+  loadCommunications, saveCommunications,
+  FAKE_LEAD_IDS, FAKE_EMAIL_IDS,
   subscribeToFirestore,
   testFirestoreConnection,
   deleteDocumentFromFirestore
@@ -27,6 +30,7 @@ import { ConsolidatedReports } from './components/ConsolidatedReports';
 import { RecordPaymentModal } from './components/RecordPaymentModal';
 import { SendDocumentModal } from './components/SendDocumentModal';
 import { DatabaseExplorerModal } from './components/DatabaseExplorerModal';
+import { CommunicationLeadsHub } from './components/CommunicationLeadsHub';
 import { LockScreen } from './components/LockScreen';
 import { CheckCircle, RefreshCw } from 'lucide-react';
 
@@ -55,6 +59,8 @@ export default function App() {
   const [quotations, setQuotations] = useState<Quotation[]>(loadQuotations);
   const [deliveryNotes, setDeliveryNotes] = useState<DeliveryNote[]>(loadDeliveryNotes);
   const [payments, setPayments] = useState<PaymentRecord[]>(loadPayments);
+  const [leads, setLeads] = useState<Lead[]>(() => loadLeads().filter(l => !FAKE_LEAD_IDS.has(l.id)));
+  const [communications, setCommunications] = useState<CommunicationEmail[]>(() => loadCommunications().filter(c => !FAKE_EMAIL_IDS.has(c.id)));
 
   // Active View Tab
   const [activeTab, setActiveTab] = useState<NavTab>('invoices');
@@ -83,6 +89,8 @@ export default function App() {
   const [autoOpenQuote, setAutoOpenQuote] = useState(false);
   const [autoOpenProduct, setAutoOpenProduct] = useState(false);
   const [autoOpenCustomer, setAutoOpenCustomer] = useState(false);
+  const [autoOpenCompose, setAutoOpenCompose] = useState(false);
+  const [autoOpenLead, setAutoOpenLead] = useState(false);
 
   // Real-time Firestore Subscription & Connection Check
   useEffect(() => {
@@ -95,6 +103,8 @@ export default function App() {
       onQuotationsUpdate: setQuotations,
       onDeliveryNotesUpdate: setDeliveryNotes,
       onPaymentsUpdate: setPayments,
+      onLeadsUpdate: setLeads,
+      onCommunicationsUpdate: setCommunications,
     });
     return () => unsub();
   }, []);
@@ -107,6 +117,8 @@ export default function App() {
   useEffect(() => saveQuotations(quotations), [quotations]);
   useEffect(() => saveDeliveryNotes(deliveryNotes), [deliveryNotes]);
   useEffect(() => savePayments(payments), [payments]);
+  useEffect(() => saveLeads(leads), [leads]);
+  useEffect(() => saveCommunications(communications), [communications]);
 
   // Handlers for Products
   const handleSaveProduct = (prod: Product) => {
@@ -275,6 +287,68 @@ export default function App() {
     showToast(`Payment of ${companySettings.currencySymbol}${payment.amount.toFixed(2)} recorded against ${updatedInvoice.invoiceNumber}.`);
   };
 
+  // Handlers for Leads
+  const handleSaveLead = (lead: Lead) => {
+    setLeads(prev => {
+      const idx = prev.findIndex(l => l.id === lead.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = lead;
+        return copy;
+      }
+      return [lead, ...prev];
+    });
+  };
+
+  const handleDeleteLead = (id: string) => {
+    setLeads(prev => prev.filter(l => l.id !== id));
+    deleteDocumentFromFirestore('leads', id);
+    showToast('Lead removed from pipeline.');
+  };
+
+  // Handlers for Communications
+  const handleSaveCommunication = (comm: CommunicationEmail) => {
+    setCommunications(prev => {
+      const idx = prev.findIndex(c => c.id === comm.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = comm;
+        return copy;
+      }
+      return [comm, ...prev];
+    });
+  };
+
+  const handleDeleteCommunication = (id: string) => {
+    setCommunications(prev => prev.filter(c => c.id !== id));
+    deleteDocumentFromFirestore('communications', id);
+    showToast('Email record deleted.');
+  };
+
+  // Convert Lead to Customer directly
+  const handleConvertLeadToCustomer = (lead: Lead) => {
+    const custCode = `CUST-${Math.floor(100 + Math.random() * 900)}`;
+    const newCustomer: Customer = {
+      id: `cust-${Date.now()}`,
+      registeredName: lead.companyName || lead.name,
+      code: custCode,
+      tradingName: lead.companyName || lead.name,
+      isTradingSameAsRegistered: true,
+      address: 'Johannesburg, South Africa',
+      email: lead.email,
+      contactPerson: lead.name,
+      phone: lead.phone || '',
+      branches: [],
+      documents: [],
+      createdAt: new Date().toISOString()
+    };
+
+    handleSaveCustomer(newCustomer);
+  };
+
+  // Unread emails count
+  const unreadEmailCount = communications.filter(c => c.folder === 'inbox' && c.status === 'unread').length;
+
   return (
     <div className="min-[#f8fafc] dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen flex flex-col font-sans">
       
@@ -294,6 +368,17 @@ export default function App() {
         onOpenCompanySettings={() => setIsCompanySettingsOpen(true)}
         onOpenDatabaseExplorer={() => setIsDatabaseExplorerOpen(true)}
         onLockApp={handleLock}
+        unreadEmailCount={unreadEmailCount}
+        onOpenComposeEmail={() => {
+          setActiveTab('communications');
+          setAutoOpenCompose(true);
+          setTimeout(() => setAutoOpenCompose(false), 400);
+        }}
+        onOpenCreateLead={() => {
+          setActiveTab('communications');
+          setAutoOpenLead(true);
+          setTimeout(() => setAutoOpenLead(false), 400);
+        }}
         onOpenCreateInvoice={() => {
           setEditingInvoice(null);
           setIsInvoiceFormOpen(true);
@@ -400,6 +485,25 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'communications' && (
+          <CommunicationLeadsHub
+            leads={leads}
+            communications={communications}
+            customers={customers}
+            companySettings={companySettings}
+            quotations={quotations}
+            invoices={invoices}
+            onSaveLead={handleSaveLead}
+            onDeleteLead={handleDeleteLead}
+            onSaveCommunication={handleSaveCommunication}
+            onDeleteCommunication={handleDeleteCommunication}
+            onConvertToCustomer={handleConvertLeadToCustomer}
+            onShowToast={showToast}
+            autoOpenCompose={autoOpenCompose}
+            autoOpenLead={autoOpenLead}
+          />
+        )}
+
         {activeTab === 'reports' && (
           <ConsolidatedReports
             invoices={invoices}
@@ -479,11 +583,15 @@ export default function App() {
         quotations={quotations}
         deliveryNotes={deliveryNotes}
         payments={payments}
+        leads={leads}
+        communications={communications}
         onDeleteInvoice={handleDeleteInvoice}
         onDeleteDeliveryNote={handleDeleteDeliveryNote}
         onDeleteProduct={handleDeleteProduct}
         onDeleteCustomer={handleDeleteCustomer}
         onDeleteQuotation={handleDeleteQuotation}
+        onDeleteLead={handleDeleteLead}
+        onDeleteCommunication={handleDeleteCommunication}
         onRefreshData={() => {
           testFirestoreConnection();
         }}

@@ -1,5 +1,5 @@
-import { CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord } from '../types';
-import { initialCompanySettings, initialProducts, initialCustomers, initialInvoices, initialQuotations, initialDeliveryNotes, initialPayments } from '../data/seedData';
+import { CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord, Lead, CommunicationEmail } from '../types';
+import { initialCompanySettings, initialProducts, initialCustomers, initialInvoices, initialQuotations, initialDeliveryNotes, initialPayments, initialLeads, initialCommunications } from '../data/seedData';
 import { doc, collection, setDoc, deleteDoc, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -11,6 +11,8 @@ const STORAGE_KEYS = {
   QUOTATIONS: 'invoicepro_quotations',
   DELIVERY_NOTES: 'invoicepro_delivery_notes',
   PAYMENTS: 'invoicepro_payments',
+  LEADS: 'invoicepro_leads',
+  COMMUNICATIONS: 'invoicepro_communications',
 };
 
 // Sanitization helper to prevent Firestore "undefined value" and document size limit errors
@@ -38,6 +40,36 @@ let lastInvoicesJson = '';
 let lastQuotationsJson = '';
 let lastDeliveryNotesJson = '';
 let lastPaymentsJson = '';
+let lastLeadsJson = '';
+let lastCommunicationsJson = '';
+
+// Known demo IDs to guarantee removal
+export const FAKE_LEAD_IDS = new Set(['lead-1', 'lead-2', 'lead-3']);
+export const FAKE_EMAIL_IDS = new Set(['email-1', 'email-2', 'email-3']);
+
+// Clean any cached demo items from storage on initial script load
+try {
+  const rawL = localStorage.getItem(STORAGE_KEYS.LEADS);
+  if (rawL) {
+    const arr = JSON.parse(rawL) as Lead[];
+    const filtered = arr.filter(l => !FAKE_LEAD_IDS.has(l.id));
+    if (filtered.length !== arr.length) {
+      localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(filtered));
+      FAKE_LEAD_IDS.forEach(id => deleteDocumentFromFirestore('leads', id));
+    }
+  }
+  const rawC = localStorage.getItem(STORAGE_KEYS.COMMUNICATIONS);
+  if (rawC) {
+    const arr = JSON.parse(rawC) as CommunicationEmail[];
+    const filtered = arr.filter(c => !FAKE_EMAIL_IDS.has(c.id));
+    if (filtered.length !== arr.length) {
+      localStorage.setItem(STORAGE_KEYS.COMMUNICATIONS, JSON.stringify(filtered));
+      FAKE_EMAIL_IDS.forEach(id => deleteDocumentFromFirestore('communications', id));
+    }
+  }
+} catch (e) {
+  // ignore
+}
 
 export async function testFirestoreConnection() {
   try {
@@ -223,6 +255,58 @@ export function savePayments(payments: PaymentRecord[]): void {
   syncCollectionToFirestore('payments', payments);
 }
 
+// --- Leads ---
+export function loadLeads(): Lead[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.LEADS);
+    const parsed = data ? (JSON.parse(data) as Lead[]) : initialLeads;
+    const cleaned = parsed.filter(l => !FAKE_LEAD_IDS.has(l.id));
+    if (cleaned.length !== parsed.length) {
+      setLocalOnly(STORAGE_KEYS.LEADS, cleaned);
+      FAKE_LEAD_IDS.forEach(id => deleteDocumentFromFirestore('leads', id));
+    }
+    return cleaned;
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveLeads(leads: Lead[]): void {
+  const cleaned = leads.filter(l => !FAKE_LEAD_IDS.has(l.id));
+  const json = JSON.stringify(cleaned);
+  setLocalOnly(STORAGE_KEYS.LEADS, cleaned);
+  if (json === lastLeadsJson) return;
+  lastLeadsJson = json;
+
+  syncCollectionToFirestore('leads', cleaned);
+}
+
+// --- Communications ---
+export function loadCommunications(): CommunicationEmail[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.COMMUNICATIONS);
+    const parsed = data ? (JSON.parse(data) as CommunicationEmail[]) : initialCommunications;
+    const cleaned = parsed.filter(c => !FAKE_EMAIL_IDS.has(c.id));
+    if (cleaned.length !== parsed.length) {
+      setLocalOnly(STORAGE_KEYS.COMMUNICATIONS, cleaned);
+      FAKE_EMAIL_IDS.forEach(id => deleteDocumentFromFirestore('communications', id));
+    }
+    return cleaned;
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveCommunications(comms: CommunicationEmail[]): void {
+  const cleaned = comms.filter(c => !FAKE_EMAIL_IDS.has(c.id));
+  const json = JSON.stringify(cleaned);
+  setLocalOnly(STORAGE_KEYS.COMMUNICATIONS, cleaned);
+  if (json === lastCommunicationsJson) return;
+  lastCommunicationsJson = json;
+
+  syncCollectionToFirestore('communications', cleaned);
+}
+
 // --- Realtime Firestore Subscriber Hook ---
 export function subscribeToFirestore(callbacks: {
   onCompanyUpdate?: (data: CompanySettings) => void;
@@ -232,6 +316,8 @@ export function subscribeToFirestore(callbacks: {
   onQuotationsUpdate?: (data: Quotation[]) => void;
   onDeliveryNotesUpdate?: (data: DeliveryNote[]) => void;
   onPaymentsUpdate?: (data: PaymentRecord[]) => void;
+  onLeadsUpdate?: (data: Lead[]) => void;
+  onCommunicationsUpdate?: (data: CommunicationEmail[]) => void;
 }) {
   const unsubs: Array<() => void> = [];
 
@@ -340,6 +426,48 @@ export function subscribeToFirestore(callbacks: {
     }, err => console.warn('Payments listener fallback:', err))
   );
 
+  // 8. Leads
+  unsubs.push(
+    onSnapshot(collection(db, 'leads'), snap => {
+      if (!snap.empty) {
+        const list = snap.docs
+          .map(d => d.data() as Lead)
+          .filter(l => !FAKE_LEAD_IDS.has(l.id));
+        lastLeadsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.LEADS, list);
+        callbacks.onLeadsUpdate?.(list);
+        snap.docs.forEach(d => {
+          if (FAKE_LEAD_IDS.has(d.id)) {
+            deleteDocumentFromFirestore('leads', d.id);
+          }
+        });
+      } else {
+        saveLeads(loadLeads());
+      }
+    }, err => console.warn('Leads listener fallback:', err))
+  );
+
+  // 9. Communications
+  unsubs.push(
+    onSnapshot(collection(db, 'communications'), snap => {
+      if (!snap.empty) {
+        const list = snap.docs
+          .map(d => d.data() as CommunicationEmail)
+          .filter(c => !FAKE_EMAIL_IDS.has(c.id));
+        lastCommunicationsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.COMMUNICATIONS, list);
+        callbacks.onCommunicationsUpdate?.(list);
+        snap.docs.forEach(d => {
+          if (FAKE_EMAIL_IDS.has(d.id)) {
+            deleteDocumentFromFirestore('communications', d.id);
+          }
+        });
+      } else {
+        saveCommunications(loadCommunications());
+      }
+    }, err => console.warn('Communications listener fallback:', err))
+  );
+
   return () => {
     unsubs.forEach(unsub => unsub());
   };
@@ -353,6 +481,8 @@ export function resetAllDataToDefault(): void {
   localStorage.removeItem(STORAGE_KEYS.QUOTATIONS);
   localStorage.removeItem(STORAGE_KEYS.DELIVERY_NOTES);
   localStorage.removeItem(STORAGE_KEYS.PAYMENTS);
+  localStorage.removeItem(STORAGE_KEYS.LEADS);
+  localStorage.removeItem(STORAGE_KEYS.COMMUNICATIONS);
 }
 
 export function exportDatabaseJSON(): void {
@@ -364,6 +494,8 @@ export function exportDatabaseJSON(): void {
     quotations: loadQuotations(),
     deliveryNotes: loadDeliveryNotes(),
     payments: loadPayments(),
+    leads: loadLeads(),
+    communications: loadCommunications(),
     exportedAt: new Date().toISOString()
   };
   const jsonStr = JSON.stringify(data, null, 2);
@@ -386,6 +518,8 @@ export function importDatabaseJSON(jsonStr: string): boolean {
     if (data.quotations) saveQuotations(data.quotations);
     if (data.deliveryNotes) saveDeliveryNotes(data.deliveryNotes);
     if (data.payments) savePayments(data.payments);
+    if (data.leads) saveLeads(data.leads);
+    if (data.communications) saveCommunications(data.communications);
     return true;
   } catch (e) {
     console.error('Failed to import database JSON', e);

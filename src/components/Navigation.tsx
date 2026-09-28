@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { CompanySettings } from '../types';
-import { FileText, FileCode, Truck, Package, Users, BarChart3, Building2, Menu, X, ShieldCheck, Plus, Sparkles, ChevronRight, Database, Lock } from 'lucide-react';
+import { FileText, FileCode, Truck, Package, Users, BarChart3, Building2, Menu, X, ShieldCheck, Plus, Sparkles, ChevronRight, Database, Lock, MessageSquare, Send, UserPlus } from 'lucide-react';
 
-export type NavTab = 'invoices' | 'quotations' | 'deliveryNotes' | 'products' | 'customers' | 'reports';
+export type NavTab = 'invoices' | 'quotations' | 'deliveryNotes' | 'products' | 'customers' | 'reports' | 'communications';
 
 interface Props {
   activeTab: NavTab;
@@ -14,6 +14,9 @@ interface Props {
   onOpenCreateQuotation?: () => void;
   onOpenCreateProduct?: () => void;
   onOpenCreateCustomer?: () => void;
+  onOpenComposeEmail?: () => void;
+  onOpenCreateLead?: () => void;
+  unreadEmailCount?: number;
   onLockApp?: () => void;
 }
 
@@ -27,6 +30,9 @@ export const Navigation: React.FC<Props> = ({
   onOpenCreateQuotation,
   onOpenCreateProduct,
   onOpenCreateCustomer,
+  onOpenComposeEmail,
+  onOpenCreateLead,
+  unreadEmailCount = 0,
   onLockApp
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -38,10 +44,31 @@ export const Navigation: React.FC<Props> = ({
     { id: 'deliveryNotes', label: 'Delivery Notes', icon: Truck },
     { id: 'products', label: 'Product Catalog', icon: Package },
     { id: 'customers', label: 'Customers & Branches', icon: Users },
+    { id: 'communications', label: 'Communication & Leads', icon: MessageSquare, badgeCount: unreadEmailCount },
     { id: 'reports', label: 'Consolidated Reports', icon: BarChart3 }
   ];
 
   const quickActions = [
+    {
+      title: 'Compose & Send Email',
+      subtitle: 'Dispatch email message or follow-up with quotation/invoice',
+      icon: Send,
+      badge: 'Mail',
+      action: () => {
+        onSelectTab('communications');
+        onOpenComposeEmail?.();
+      }
+    },
+    {
+      title: 'Capture Sales Lead',
+      subtitle: 'Register new wholesale inquiry, prospective customer or lead',
+      icon: UserPlus,
+      badge: 'Lead',
+      action: () => {
+        onSelectTab('communications');
+        onOpenCreateLead?.();
+      }
+    },
     {
       title: 'Database Explorer (All Records)',
       subtitle: 'View, search, inspect raw JSON & manage all database records',
@@ -125,7 +152,7 @@ export const Navigation: React.FC<Props> = ({
             </div>
 
             {/* Desktop Navigation Tabs */}
-            <nav className="hidden lg:flex items-center space-x-1.5">
+            <nav className="hidden xl:flex items-center space-x-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -133,14 +160,19 @@ export const Navigation: React.FC<Props> = ({
                   <button
                     key={item.id}
                     onClick={() => onSelectTab(item.id as NavTab)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-bold transition-all relative ${
                       isActive
                         ? 'bg-yellow-400 text-black shadow-md'
                         : 'text-slate-300 hover:text-yellow-400 hover:bg-slate-900'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
-                    {item.label}
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span>{item.label}</span>
+                    {Boolean(item.badgeCount && item.badgeCount > 0) && (
+                      <span className="text-[10px] bg-rose-500 text-white font-extrabold px-1.5 py-0.2 rounded-full">
+                        {item.badgeCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -259,14 +291,21 @@ export const Navigation: React.FC<Props> = ({
                     onSelectTab(item.id as NavTab);
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition ${
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold transition ${
                     isActive
                       ? 'bg-yellow-400 text-black'
                       : 'text-slate-300 hover:bg-slate-900 hover:text-yellow-400'
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
-                  {item.label}
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-5 h-5" />
+                    <span>{item.label}</span>
+                  </div>
+                  {Boolean(item.badgeCount && item.badgeCount > 0) && (
+                    <span className="text-[10px] bg-rose-500 text-white font-extrabold px-2 py-0.5 rounded-full">
+                      {item.badgeCount}
+                    </span>
+                  )}
                 </button>
               );
             })}

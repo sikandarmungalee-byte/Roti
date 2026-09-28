@@ -1,4 +1,4 @@
-import { CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord } from '../types';
+import { CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord, Lead, CommunicationEmail } from '../types';
 
 export const initialCompanySettings: CompanySettings = {
   name: 'Roti Bros (Pty) Ltd',
@@ -30,5 +30,10 @@ export const initialQuotations: Quotation[] = [];
 export const initialDeliveryNotes: DeliveryNote[] = [];
 
 export const initialPayments: PaymentRecord[] = [];
+
+export const initialLeads: Lead[] = [];
+
+export const initialCommunications: CommunicationEmail[] = [];
+
 
 
