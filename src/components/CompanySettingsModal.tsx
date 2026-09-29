@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { CompanySettings } from '../types';
 import { Building2, X, Save, Image, CreditCard, Database, Download, Upload, CheckCircle2, HardDrive, Lock, ShieldCheck, KeyRound } from 'lucide-react';
-import { exportDatabaseJSON, importDatabaseJSON } from '../utils/storage';
+import { exportDatabaseJSON, importDatabaseJSON, populateRotiBrosData } from '../utils/storage';
 
 interface Props {
   isOpen: boolean;
@@ -369,6 +369,20 @@ export const CompanySettingsModal: React.FC<Props> = ({
                 >
                   <Upload className="w-3.5 h-3.5" />
                   Restore Database Backup
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    populateRotiBrosData();
+                    setImportStatus('Roti Bros Bakery records populated! Refreshing...');
+                    setTimeout(() => window.location.reload(), 800);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                  title="Populate authentic Roti Bros products, customer branches, invoices & delivery notes"
+                >
+                  <HardDrive className="w-3.5 h-3.5" />
+                  Restore Bakery Dataset
                 </button>
               </div>
 

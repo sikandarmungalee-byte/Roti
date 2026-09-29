@@ -2,84 +2,23 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default-deny global safety net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Security helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
     // Connection testing
     match /test/{docId} {
-      allow get: if isSignedIn();
-      allow list, write: if false;
+      allow read, write: if request.auth != null;
     }
 
-    // User-scoped data architecture
+    // User-scoped data: Each user has full read/write access to their own sandbox
     match /users/{userId} {
-      allow get, write: if isOwner(userId) && isValidId(userId);
-      allow list: if false;
+      allow read, write: if request.auth != null && request.auth.uid == userId;
 
-      // Diagnostic and connection tracking
-      match /system/{docId} {
-        allow read, write: if isOwner(userId) && isValidId(docId);
+      match /{allChildren=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+    }
 
-      // Company settings
-      match /company_settings/{settingId} {
-        allow read, write: if isOwner(userId) && isValidId(settingId);
-      }
-
-      // Products catalogue
-      match /products/{productId} {
-        allow read, write: if isOwner(userId) && isValidId(productId);
-      }
-
-      // Customers
-      match /customers/{customerId} {
-        allow read, write: if isOwner(userId) && isValidId(customerId);
-      }
-
-      // Invoices
-      match /invoices/{invoiceId} {
-        allow read, write: if isOwner(userId) && isValidId(invoiceId);
-      }
-
-      // Quotations
-      match /quotations/{quotationId} {
-        allow read, write: if isOwner(userId) && isValidId(quotationId);
-      }
-
-      // Delivery Notes
-      match /delivery_notes/{deliveryNoteId} {
-        allow read, write: if isOwner(userId) && isValidId(deliveryNoteId);
-      }
-
-      // Payments
-      match /payments/{paymentId} {
-        allow read, write: if isOwner(userId) && isValidId(paymentId);
-      }
-
-      // Leads
-      match /leads/{leadId} {
-        allow read, write: if isOwner(userId) && isValidId(leadId);
-      }
-
-      // Communications
-      match /communications/{commId} {
-        allow read, write: if isOwner(userId) && isValidId(commId);
-      }
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

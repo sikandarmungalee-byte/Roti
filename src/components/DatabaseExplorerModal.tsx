@@ -8,7 +8,7 @@ import {
   Building2, Layers, ShieldCheck, X, ExternalLink, HardDrive, CheckCircle2,
   AlertCircle, MessageSquare, Mail, UserCheck
 } from 'lucide-react';
-import { exportDatabaseJSON, importDatabaseJSON, deleteDocumentFromUserFirestore, testFirestoreConnection } from '../utils/storage';
+import { exportDatabaseJSON, importDatabaseJSON, deleteDocumentFromUserFirestore, testFirestoreConnection, populateRotiBrosData } from '../utils/storage';
 import { auth } from '../lib/firebase';
 
 interface Props {
@@ -380,6 +380,21 @@ export const DatabaseExplorerModal: React.FC<Props> = ({
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-yellow-400' : ''}`} />
               <span>Resync</span>
+            </button>
+
+            <button
+              onClick={() => {
+                populateRotiBrosData(auth.currentUser?.uid);
+                onShowToast('Roti Bros Bakery records populated and synced!');
+                setTimeout(() => {
+                  window.location.reload();
+                }, 600);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
+              title="Populate authentic Roti Bros bakery products, customer branches, invoices & delivery notes"
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>Load Bakery Data</span>
             </button>
 
             <button

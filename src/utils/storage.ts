@@ -337,6 +337,25 @@ export async function saveCommunicationToFirestore(userId: string, comm: Communi
   }
 }
 
+// Safe merge function to guarantee that an empty cloud response NEVER wipes out existing local data
+function safeMergeRecords<T extends { id: string }>(
+  cloudList: T[],
+  localLoader: () => T[],
+  onSyncToCloud: (items: T[]) => void
+): T[] {
+  if (cloudList && cloudList.length > 0) {
+    return cloudList;
+  }
+  // Cloud is empty for this user. Recover from local storage and sync up!
+  const localItems = localLoader();
+  if (localItems && localItems.length > 0) {
+    console.info(`Preserving ${localItems.length} local records and uploading to cloud.`);
+    onSyncToCloud(localItems);
+    return localItems;
+  }
+  return [];
+}
+
 // --- Realtime Firestore Subscriber for Authenticated User ---
 export function subscribeToUserFirestore(
   userId: string,
@@ -367,6 +386,10 @@ export function subscribeToUserFirestore(
           lastCompanyJson = JSON.stringify(settings);
           setLocalOnly(STORAGE_KEYS.COMPANY, settings);
           callbacks.onCompanyUpdate?.(settings);
+        } else {
+          const localSettings = loadCompanySettings();
+          saveCompanySettingsToFirestore(userId, localSettings);
+          callbacks.onCompanyUpdate?.(localSettings);
         }
       },
       err => handleFirestoreError(err, OperationType.GET, companyPath)
@@ -379,10 +402,13 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'products'),
       snap => {
-        const list = snap.docs.map(d => d.data() as Product);
-        lastProductsJson = JSON.stringify(list);
-        setLocalOnly(STORAGE_KEYS.PRODUCTS, list);
-        callbacks.onProductsUpdate?.(list);
+        const cloudList = snap.docs.map(d => d.data() as Product);
+        const resolved = safeMergeRecords(cloudList, loadProducts, (items) => {
+          syncUserCollectionToFirestore(userId, 'products', items);
+        });
+        lastProductsJson = JSON.stringify(resolved);
+        setLocalOnly(STORAGE_KEYS.PRODUCTS, resolved);
+        callbacks.onProductsUpdate?.(resolved);
       },
       err => handleFirestoreError(err, OperationType.LIST, productsPath)
     )
@@ -394,7 +420,7 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'customers'),
       snap => {
-        const list = snap.docs.map(d => {
+        const cloudList = snap.docs.map(d => {
           const c = d.data() as Customer;
           return {
             ...c,
@@ -402,9 +428,12 @@ export function subscribeToUserFirestore(
             documents: c.documents || []
           };
         });
-        lastCustomersJson = JSON.stringify(list);
-        setLocalOnly(STORAGE_KEYS.CUSTOMERS, list);
-        callbacks.onCustomersUpdate?.(list);
+        const resolved = safeMergeRecords(cloudList, loadCustomers, (items) => {
+          syncUserCollectionToFirestore(userId, 'customers', items);
+        });
+        lastCustomersJson = JSON.stringify(resolved);
+        setLocalOnly(STORAGE_KEYS.CUSTOMERS, resolved);
+        callbacks.onCustomersUpdate?.(resolved);
       },
       err => handleFirestoreError(err, OperationType.LIST, customersPath)
     )
@@ -416,10 +445,13 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'invoices'),
       snap => {
-        const list = snap.docs.map(d => d.data() as Invoice);
-        lastInvoicesJson = JSON.stringify(list);
-        setLocalOnly(STORAGE_KEYS.INVOICES, list);
-        callbacks.onInvoicesUpdate?.(list);
+        const cloudList = snap.docs.map(d => d.data() as Invoice);
+        const resolved = safeMergeRecords(cloudList, loadInvoices, (items) => {
+          syncUserCollectionToFirestore(userId, 'invoices', items);
+        });
+        lastInvoicesJson = JSON.stringify(resolved);
+        setLocalOnly(STORAGE_KEYS.INVOICES, resolved);
+        callbacks.onInvoicesUpdate?.(resolved);
       },
       err => handleFirestoreError(err, OperationType.LIST, invoicesPath)
     )
@@ -431,10 +463,13 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'quotations'),
       snap => {
-        const list = snap.docs.map(d => d.data() as Quotation);
-        lastQuotationsJson = JSON.stringify(list);
-        setLocalOnly(STORAGE_KEYS.QUOTATIONS, list);
-        callbacks.onQuotationsUpdate?.(list);
+        const cloudList = snap.docs.map(d => d.data() as Quotation);
+        const resolved = safeMergeRecords(cloudList, loadQuotations, (items) => {
+          syncUserCollectionToFirestore(userId, 'quotations', items);
+        });
+        lastQuotationsJson = JSON.stringify(resolved);
+        setLocalOnly(STORAGE_KEYS.QUOTATIONS, resolved);
+        callbacks.onQuotationsUpdate?.(resolved);
       },
       err => handleFirestoreError(err, OperationType.LIST, quotationsPath)
     )
@@ -446,10 +481,13 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'delivery_notes'),
       snap => {
-        const list = snap.docs.map(d => d.data() as DeliveryNote);
-        lastDeliveryNotesJson = JSON.stringify(list);
-        setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, list);
-        callbacks.onDeliveryNotesUpdate?.(list);
+        const cloudList = snap.docs.map(d => d.data() as DeliveryNote);
+        const resolved = safeMergeRecords(cloudList, loadDeliveryNotes, (items) => {
+          syncUserCollectionToFirestore(userId, 'delivery_notes', items);
+        });
+        lastDeliveryNotesJson = JSON.stringify(resolved);
+        setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, resolved);
+        callbacks.onDeliveryNotesUpdate?.(resolved);
       },
       err => handleFirestoreError(err, OperationType.LIST, dnPath)
     )
@@ -461,10 +499,13 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'payments'),
       snap => {
-        const list = snap.docs.map(d => d.data() as PaymentRecord);
-        lastPaymentsJson = JSON.stringify(list);
-        setLocalOnly(STORAGE_KEYS.PAYMENTS, list);
-        callbacks.onPaymentsUpdate?.(list);
+        const cloudList = snap.docs.map(d => d.data() as PaymentRecord);
+        const resolved = safeMergeRecords(cloudList, loadPayments, (items) => {
+          syncUserCollectionToFirestore(userId, 'payments', items);
+        });
+        lastPaymentsJson = JSON.stringify(resolved);
+        setLocalOnly(STORAGE_KEYS.PAYMENTS, resolved);
+        callbacks.onPaymentsUpdate?.(resolved);
       },
       err => handleFirestoreError(err, OperationType.LIST, paymentsPath)
     )
@@ -535,7 +576,9 @@ export function saveCompanySettings(settings: CompanySettings, userId?: string):
 export function loadProducts(): Product[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    return data ? (JSON.parse(data) as Product[]) : initialProducts;
+    if (!data) return initialProducts;
+    const parsed = JSON.parse(data) as Product[];
+    return parsed && parsed.length > 0 ? parsed : initialProducts;
   } catch (e) {
     return initialProducts;
   }
@@ -556,7 +599,9 @@ export function saveProducts(products: Product[], userId?: string): void {
 export function loadCustomers(): Customer[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    return data ? (JSON.parse(data) as Customer[]) : initialCustomers;
+    if (!data) return initialCustomers;
+    const parsed = JSON.parse(data) as Customer[];
+    return parsed && parsed.length > 0 ? parsed : initialCustomers;
   } catch (e) {
     return initialCustomers;
   }
@@ -583,7 +628,9 @@ export function saveCustomers(customers: Customer[], userId?: string): void {
 export function loadInvoices(): Invoice[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.INVOICES);
-    return data ? (JSON.parse(data) as Invoice[]) : initialInvoices;
+    if (!data) return initialInvoices;
+    const parsed = JSON.parse(data) as Invoice[];
+    return parsed && parsed.length > 0 ? parsed : initialInvoices;
   } catch (e) {
     return initialInvoices;
   }
@@ -604,7 +651,9 @@ export function saveInvoices(invoices: Invoice[], userId?: string): void {
 export function loadQuotations(): Quotation[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.QUOTATIONS);
-    return data ? (JSON.parse(data) as Quotation[]) : initialQuotations;
+    if (!data) return initialQuotations;
+    const parsed = JSON.parse(data) as Quotation[];
+    return parsed && parsed.length > 0 ? parsed : initialQuotations;
   } catch (e) {
     return initialQuotations;
   }
@@ -625,7 +674,9 @@ export function saveQuotations(quotations: Quotation[], userId?: string): void {
 export function loadDeliveryNotes(): DeliveryNote[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.DELIVERY_NOTES);
-    return data ? (JSON.parse(data) as DeliveryNote[]) : initialDeliveryNotes;
+    if (!data) return initialDeliveryNotes;
+    const parsed = JSON.parse(data) as DeliveryNote[];
+    return parsed && parsed.length > 0 ? parsed : initialDeliveryNotes;
   } catch (e) {
     return initialDeliveryNotes;
   }
@@ -646,7 +697,9 @@ export function saveDeliveryNotes(deliveryNotes: DeliveryNote[], userId?: string
 export function loadPayments(): PaymentRecord[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-    return data ? (JSON.parse(data) as PaymentRecord[]) : initialPayments;
+    if (!data) return initialPayments;
+    const parsed = JSON.parse(data) as PaymentRecord[];
+    return parsed && parsed.length > 0 ? parsed : initialPayments;
   } catch (e) {
     return initialPayments;
   }
@@ -711,6 +764,17 @@ export function saveCommunications(comms: CommunicationEmail[], userId?: string)
 }
 
 // Backup & Export utilities
+export function populateRotiBrosData(userId?: string): void {
+  const uid = userId || auth.currentUser?.uid;
+  saveProducts(initialProducts, uid);
+  saveCustomers(initialCustomers, uid);
+  saveInvoices(initialInvoices, uid);
+  saveQuotations(initialQuotations, uid);
+  saveDeliveryNotes(initialDeliveryNotes, uid);
+  savePayments(initialPayments, uid);
+  saveCompanySettings(initialCompanySettings, uid);
+}
+
 export function resetAllDataToDefault(): void {
   localStorage.removeItem(STORAGE_KEYS.COMPANY);
   localStorage.removeItem(STORAGE_KEYS.PRODUCTS);

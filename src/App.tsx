@@ -17,6 +17,15 @@ import {
   hasUserCloudData,
   migrateLocalDataToUserFirestore,
   subscribeToUserFirestore,
+  fetchUserCloudData,
+  populateRotiBrosData,
+  saveCompanySettings,
+  saveProducts,
+  saveCustomers,
+  saveInvoices,
+  saveQuotations,
+  saveDeliveryNotes,
+  savePayments,
   saveCompanySettingsToFirestore,
   saveProductToFirestore,
   deleteDocumentFromUserFirestore,
@@ -46,7 +55,7 @@ import { SendDocumentModal } from './components/SendDocumentModal';
 import { DatabaseExplorerModal } from './components/DatabaseExplorerModal';
 import { CommunicationLeadsHub } from './components/CommunicationLeadsHub';
 import { LockScreen } from './components/LockScreen';
-import { CheckCircle, Cloud, RefreshCw } from 'lucide-react';
+import { CheckCircle, Cloud, RefreshCw, CloudUpload, CloudDownload, Database, ShieldCheck, Sparkles, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const { currentUser, isLoading, syncState, setSyncState, setLastSyncedAt, signInWithGoogle } = useAuth();
@@ -146,17 +155,17 @@ export default function App() {
           // First time user signs into cloud: Migrate existing local records into user's Firestore cloud account
           console.log("No existing cloud data found. Uploading local dataset to user account...");
           await migrateLocalDataToUserFirestore(uid, {
-            companySettings,
-            products,
-            customers,
-            invoices,
-            quotations,
-            deliveryNotes,
-            payments,
+            companySettings: loadCompanySettings(),
+            products: loadProducts(),
+            customers: loadCustomers(),
+            invoices: loadInvoices(),
+            quotations: loadQuotations(),
+            deliveryNotes: loadDeliveryNotes(),
+            payments: loadPayments(),
             leads,
             communications
           });
-          showToast('Data preserved & synced to your cloud account!');
+          showToast('Your records are preserved & synced to your cloud account!');
         } else {
           console.log("Existing cloud records found for user. Retrieving from Firestore...");
           showToast('Retrieved cloud data from your account.');
@@ -232,22 +241,23 @@ export default function App() {
   const handleSaveProduct = (prod: Product) => {
     setProducts(prev => {
       const idx = prev.findIndex(p => p.id === prod.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = prod;
-        return copy;
-      }
-      return [prod, ...prev];
+      const updated = idx >= 0 ? prev.map((p, i) => i === idx ? prod : p) : [prod, ...prev];
+      saveProducts(updated, currentUser?.uid);
+      return updated;
     });
 
     if (currentUser?.uid) {
       saveProductToFirestore(currentUser.uid, prod);
     }
-    showToast(`Product "${prod.name}" saved to cloud.`);
+    showToast(`Product "${prod.name}" saved.`);
   };
 
   const handleDeleteProduct = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
+    setProducts(prev => {
+      const updated = prev.filter(p => p.id !== id);
+      saveProducts(updated, currentUser?.uid);
+      return updated;
+    });
     if (currentUser?.uid) {
       deleteDocumentFromUserFirestore(currentUser.uid, 'products', id);
     }
@@ -258,22 +268,23 @@ export default function App() {
   const handleSaveCustomer = (cust: Customer) => {
     setCustomers(prev => {
       const idx = prev.findIndex(c => c.id === cust.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = cust;
-        return copy;
-      }
-      return [cust, ...prev];
+      const updated = idx >= 0 ? prev.map((c, i) => i === idx ? cust : c) : [cust, ...prev];
+      saveCustomers(updated, currentUser?.uid);
+      return updated;
     });
 
     if (currentUser?.uid) {
       saveCustomerToFirestore(currentUser.uid, cust);
     }
-    showToast(`Customer "${cust.registeredName}" updated in cloud.`);
+    showToast(`Customer "${cust.registeredName}" updated.`);
   };
 
   const handleDeleteCustomer = (id: string) => {
-    setCustomers(prev => prev.filter(c => c.id !== id));
+    setCustomers(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      saveCustomers(updated, currentUser?.uid);
+      return updated;
+    });
     if (currentUser?.uid) {
       deleteDocumentFromUserFirestore(currentUser.uid, 'customers', id);
     }
@@ -284,22 +295,16 @@ export default function App() {
   const handleSaveInvoice = (newInvoice: Invoice, newDeliveryNote: DeliveryNote) => {
     setInvoices(prev => {
       const idx = prev.findIndex(i => i.id === newInvoice.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = newInvoice;
-        return copy;
-      }
-      return [newInvoice, ...prev];
+      const updated = idx >= 0 ? prev.map((inv, i) => i === idx ? newInvoice : inv) : [newInvoice, ...prev];
+      saveInvoices(updated, currentUser?.uid);
+      return updated;
     });
 
     setDeliveryNotes(prev => {
       const idx = prev.findIndex(d => d.id === newDeliveryNote.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = newDeliveryNote;
-        return copy;
-      }
-      return [newDeliveryNote, ...prev];
+      const updated = idx >= 0 ? prev.map((dn, i) => i === idx ? newDeliveryNote : dn) : [newDeliveryNote, ...prev];
+      saveDeliveryNotes(updated, currentUser?.uid);
+      return updated;
     });
 
     if (currentUser?.uid) {
@@ -307,11 +312,15 @@ export default function App() {
       saveDeliveryNoteToFirestore(currentUser.uid, newDeliveryNote);
     }
 
-    showToast(`Invoice ${newInvoice.invoiceNumber} & Delivery Note ${newDeliveryNote.deliveryNoteNumber} saved to cloud!`);
+    showToast(`Invoice ${newInvoice.invoiceNumber} & Delivery Note saved.`);
   };
 
   const handleDeleteInvoice = (id: string) => {
-    setInvoices(prev => prev.filter(i => i.id !== id));
+    setInvoices(prev => {
+      const updated = prev.filter(i => i.id !== id);
+      saveInvoices(updated, currentUser?.uid);
+      return updated;
+    });
     if (currentUser?.uid) {
       deleteDocumentFromUserFirestore(currentUser.uid, 'invoices', id);
     }
@@ -322,22 +331,23 @@ export default function App() {
   const handleSaveQuotation = (q: Quotation) => {
     setQuotations(prev => {
       const idx = prev.findIndex(item => item.id === q.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = q;
-        return copy;
-      }
-      return [q, ...prev];
+      const updated = idx >= 0 ? prev.map((item, i) => i === idx ? q : item) : [q, ...prev];
+      saveQuotations(updated, currentUser?.uid);
+      return updated;
     });
 
     if (currentUser?.uid) {
       saveQuotationToFirestore(currentUser.uid, q);
     }
-    showToast(`Quotation ${q.quotationNumber} saved to cloud.`);
+    showToast(`Quotation ${q.quotationNumber} saved.`);
   };
 
   const handleDeleteQuotation = (id: string) => {
-    setQuotations(prev => prev.filter(q => q.id !== id));
+    setQuotations(prev => {
+      const updated = prev.filter(q => q.id !== id);
+      saveQuotations(updated, currentUser?.uid);
+      return updated;
+    });
     if (currentUser?.uid) {
       deleteDocumentFromUserFirestore(currentUser.uid, 'quotations', id);
     }
@@ -397,9 +407,21 @@ export default function App() {
       convertedInvoiceId: newInv.id
     };
 
-    setInvoices(prev => [newInv, ...prev]);
-    setDeliveryNotes(prev => [newDN, ...prev]);
-    setQuotations(prev => prev.map(item => item.id === q.id ? updatedQuote : item));
+    setInvoices(prev => {
+      const updated = [newInv, ...prev];
+      saveInvoices(updated, currentUser?.uid);
+      return updated;
+    });
+    setDeliveryNotes(prev => {
+      const updated = [newDN, ...prev];
+      saveDeliveryNotes(updated, currentUser?.uid);
+      return updated;
+    });
+    setQuotations(prev => {
+      const updated = prev.map(item => item.id === q.id ? updatedQuote : item);
+      saveQuotations(updated, currentUser?.uid);
+      return updated;
+    });
 
     if (currentUser?.uid) {
       saveInvoiceToFirestore(currentUser.uid, newInv);
@@ -416,7 +438,11 @@ export default function App() {
     const updated = deliveryNotes.find(d => d.id === id);
     if (updated) {
       const modified = { ...updated, status: newStatus };
-      setDeliveryNotes(prev => prev.map(d => d.id === id ? modified : d));
+      setDeliveryNotes(prev => {
+        const nextList = prev.map(d => d.id === id ? modified : d);
+        saveDeliveryNotes(nextList, currentUser?.uid);
+        return nextList;
+      });
       if (currentUser?.uid) {
         saveDeliveryNoteToFirestore(currentUser.uid, modified);
       }
@@ -425,7 +451,11 @@ export default function App() {
   };
 
   const handleDeleteDeliveryNote = (id: string) => {
-    setDeliveryNotes(prev => prev.filter(d => d.id !== id));
+    setDeliveryNotes(prev => {
+      const updated = prev.filter(d => d.id !== id);
+      saveDeliveryNotes(updated, currentUser?.uid);
+      return updated;
+    });
     if (currentUser?.uid) {
       deleteDocumentFromUserFirestore(currentUser.uid, 'delivery_notes', id);
     }
@@ -434,8 +464,16 @@ export default function App() {
 
   // Handlers for Payments
   const handleSavePayment = (payment: PaymentRecord, updatedInvoice: Invoice) => {
-    setPayments(prev => [payment, ...prev]);
-    setInvoices(prev => prev.map(i => i.id === updatedInvoice.id ? updatedInvoice : i));
+    setPayments(prev => {
+      const updated = [payment, ...prev];
+      savePayments(updated, currentUser?.uid);
+      return updated;
+    });
+    setInvoices(prev => {
+      const updated = prev.map(i => i.id === updatedInvoice.id ? updatedInvoice : i);
+      saveInvoices(updated, currentUser?.uid);
+      return updated;
+    });
 
     if (currentUser?.uid) {
       savePaymentToFirestore(currentUser.uid, payment);
@@ -518,10 +556,112 @@ export default function App() {
   // Handlers for Company Settings
   const handleSaveCompanySettings = (settings: CompanySettings) => {
     setCompanySettings(settings);
+    saveCompanySettings(settings, currentUser?.uid);
     if (currentUser?.uid) {
       saveCompanySettingsToFirestore(currentUser.uid, settings);
     }
-    showToast('Company profile saved to cloud.');
+    showToast('Company profile saved.');
+  };
+
+  // Multi-Device Cloud Force Sync Utilities
+  const handleForcePushToCloud = async () => {
+    if (!currentUser?.uid) {
+      showToast('Please sign in with Google first.');
+      return;
+    }
+    showToast('Pushing all records to your cloud database...');
+    await migrateLocalDataToUserFirestore(currentUser.uid, {
+      companySettings,
+      products,
+      customers,
+      invoices,
+      quotations,
+      deliveryNotes,
+      payments,
+      leads,
+      communications
+    });
+    setSyncState('synced');
+    setLastSyncedAt(new Date());
+    showToast('All records successfully pushed to your cloud account!');
+  };
+
+  const handleForcePullFromCloud = async () => {
+    if (!currentUser?.uid) {
+      showToast('Please sign in with Google first.');
+      return;
+    }
+    showToast('Fetching latest records from your cloud account...');
+    const cloudData = await fetchUserCloudData(currentUser.uid);
+    if (cloudData) {
+      if (cloudData.companySettings) {
+        setCompanySettings(cloudData.companySettings);
+        saveCompanySettings(cloudData.companySettings, currentUser.uid);
+      }
+      if (cloudData.products && cloudData.products.length > 0) {
+        setProducts(cloudData.products);
+        saveProducts(cloudData.products, currentUser.uid);
+      }
+      if (cloudData.customers && cloudData.customers.length > 0) {
+        setCustomers(cloudData.customers);
+        saveCustomers(cloudData.customers, currentUser.uid);
+      }
+      if (cloudData.invoices && cloudData.invoices.length > 0) {
+        setInvoices(cloudData.invoices);
+        saveInvoices(cloudData.invoices, currentUser.uid);
+      }
+      if (cloudData.quotations && cloudData.quotations.length > 0) {
+        setQuotations(cloudData.quotations);
+        saveQuotations(cloudData.quotations, currentUser.uid);
+      }
+      if (cloudData.deliveryNotes && cloudData.deliveryNotes.length > 0) {
+        setDeliveryNotes(cloudData.deliveryNotes);
+        saveDeliveryNotes(cloudData.deliveryNotes, currentUser.uid);
+      }
+      if (cloudData.payments && cloudData.payments.length > 0) {
+        setPayments(cloudData.payments);
+        savePayments(cloudData.payments, currentUser.uid);
+      }
+      setSyncState('synced');
+      setLastSyncedAt(new Date());
+      showToast('Retrieved cloud data successfully!');
+    } else {
+      showToast('No cloud records found yet. Uploading local dataset...');
+      await handleForcePushToCloud();
+    }
+  };
+
+  const handleRestoreBakeryRecords = () => {
+    populateRotiBrosData(currentUser?.uid);
+    const s = loadCompanySettings();
+    const p = loadProducts();
+    const c = loadCustomers();
+    const inv = loadInvoices();
+    const q = loadQuotations();
+    const dn = loadDeliveryNotes();
+    const pay = loadPayments();
+
+    setCompanySettings(s);
+    setProducts(p);
+    setCustomers(c);
+    setInvoices(inv);
+    setQuotations(q);
+    setDeliveryNotes(dn);
+    setPayments(pay);
+
+    if (currentUser?.uid) {
+      migrateLocalDataToUserFirestore(currentUser.uid, {
+        companySettings: s,
+        products: p,
+        customers: c,
+        invoices: inv,
+        quotations: q,
+        deliveryNotes: dn,
+        payments: pay
+      });
+    }
+
+    showToast('Roti Bros Bakery records populated and synced!');
   };
 
   // Unread emails count
@@ -530,7 +670,47 @@ export default function App() {
   // Render Full Production Suite Immediately (Zero-block startup)
   return (
     <div className="min-[#f8fafc] dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen flex flex-col font-sans">
-      {/* Cloud Sync Announcement & Quick Sign-in Bar */}
+      {/* Cloud Sync Status Bar (When Signed In) */}
+      {currentUser && (
+        <div className="bg-slate-900 border-b border-emerald-500/40 px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-200 z-40">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+            <span className="truncate">
+              Connected: <strong className="text-emerald-300">{currentUser.email}</strong> &bull; Multi-Device Cloud Sync ({invoices.length} Inv, {products.length} Prod, {customers.length} Cust)
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {invoices.length === 0 && (
+              <button
+                onClick={handleRestoreBakeryRecords}
+                className="flex items-center gap-1 px-2.5 py-1 bg-yellow-400 hover:bg-yellow-300 text-black font-extrabold rounded text-xs transition cursor-pointer"
+                title="Populate authentic Roti Bros bakery records into your account"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Restore Bakery Records</span>
+              </button>
+            )}
+            <button
+              onClick={handleForcePushToCloud}
+              className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition cursor-pointer"
+              title="Upload all local records into your cloud database"
+            >
+              <CloudUpload className="w-3.5 h-3.5" />
+              <span>Upload to Cloud</span>
+            </button>
+            <button
+              onClick={handleForcePullFromCloud}
+              className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded text-xs border border-slate-700 transition cursor-pointer"
+              title="Pull latest cloud documents from Firestore"
+            >
+              <CloudDownload className="w-3.5 h-3.5" />
+              <span>Pull from Cloud</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Cloud Sync Announcement & Quick Sign-in Bar (When Signed Out) */}
       {!currentUser && !dismissedSyncBar && (
         <div className="bg-slate-900 border-b border-yellow-500/30 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-200 z-40">
           <div className="flex items-center gap-2 min-w-0">
