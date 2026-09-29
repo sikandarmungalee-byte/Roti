@@ -8,7 +8,8 @@ import {
   Building2, Layers, ShieldCheck, X, ExternalLink, HardDrive, CheckCircle2,
   AlertCircle, MessageSquare, Mail, UserCheck
 } from 'lucide-react';
-import { exportDatabaseJSON, importDatabaseJSON, deleteDocumentFromFirestore, testFirestoreConnection } from '../utils/storage';
+import { exportDatabaseJSON, importDatabaseJSON, deleteDocumentFromUserFirestore, testFirestoreConnection } from '../utils/storage';
+import { auth } from '../lib/firebase';
 
 interface Props {
   isOpen: boolean;
@@ -319,7 +320,9 @@ export const DatabaseExplorerModal: React.FC<Props> = ({
     } else if (record.collection === 'communications') {
       onDeleteCommunication?.(record.id);
     } else {
-      deleteDocumentFromFirestore(record.collection, record.id);
+      if (auth.currentUser?.uid) {
+        deleteDocumentFromUserFirestore(auth.currentUser.uid, record.collection, record.id);
+      }
     }
 
     if (selectedRecord?.data?.id === record.id) {

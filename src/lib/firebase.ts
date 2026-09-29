@@ -1,35 +1,19 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeFirestore, getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-
-let rawConfig: Record<string, string> = {};
-try {
-  // @ts-ignore
-  rawConfig = import.meta.glob('../../firebase-applet-config.json', { eager: true, import: 'default' })['../../firebase-applet-config.json'] || {};
-} catch (e) {
-  rawConfig = {};
-}
+import { initializeFirestore, doc, getDocFromServer, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import configJson from '../firebase-applet-config.json';
 
 const metaEnv = (import.meta as unknown as { env?: Record<string, string> }).env || {};
 
-const DEFAULT_CONFIG = {
-  projectId: "gen-lang-client-0112209964",
-  appId: "1:558916521027:web:a6c82f08052cf2710623f9",
-  apiKey: "AIzaSyBFvaq1Hsftp77BNs_nHZs41rkPOYPt3aE",
-  authDomain: "gen-lang-client-0112209964.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-invoiceproinvoic-772db6db-ff68-428f-a900-8ebce0a51e9d",
-  storageBucket: "gen-lang-client-0112209964.firebasestorage.app",
-  messagingSenderId: "558916521027"
-};
-
+// Prioritize the provisioned firebase-applet-config.json over dummy or unconfigured env vars
 const firebaseConfig = {
-  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || rawConfig?.projectId || DEFAULT_CONFIG.projectId,
-  appId: metaEnv.VITE_FIREBASE_APP_ID || rawConfig?.appId || DEFAULT_CONFIG.appId,
-  apiKey: metaEnv.VITE_FIREBASE_API_KEY || rawConfig?.apiKey || DEFAULT_CONFIG.apiKey,
-  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || rawConfig?.authDomain || DEFAULT_CONFIG.authDomain,
-  firestoreDatabaseId: metaEnv.VITE_FIREBASE_DATABASE_ID || rawConfig?.firestoreDatabaseId || DEFAULT_CONFIG.firestoreDatabaseId,
-  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || rawConfig?.storageBucket || DEFAULT_CONFIG.storageBucket,
-  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || rawConfig?.messagingSenderId || DEFAULT_CONFIG.messagingSenderId,
+  projectId: configJson.projectId || metaEnv.VITE_FIREBASE_PROJECT_ID,
+  appId: configJson.appId || metaEnv.VITE_FIREBASE_APP_ID,
+  apiKey: (configJson.apiKey && configJson.apiKey.startsWith('AIza')) ? configJson.apiKey : (metaEnv.VITE_FIREBASE_API_KEY || configJson.apiKey),
+  authDomain: configJson.authDomain || metaEnv.VITE_FIREBASE_AUTH_DOMAIN,
+  firestoreDatabaseId: configJson.firestoreDatabaseId || metaEnv.VITE_FIREBASE_DATABASE_ID,
+  storageBucket: configJson.storageBucket || metaEnv.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: configJson.messagingSenderId || metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID,
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -38,20 +22,31 @@ const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatab
   ? firebaseConfig.firestoreDatabaseId
   : undefined;
 
-let firestoreDb: any;
-try {
-  firestoreDb = initializeFirestore(app, {
-    experimentalAutoDetectLongPolling: true,
-  }, dbId);
-} catch (e) {
+// Enable Firestore with offline persistence and long-polling compatibility
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  }),
+  experimentalAutoDetectLongPolling: true,
+}, dbId);
+
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+
+export async function testConnection(): Promise<boolean> {
   try {
-    firestoreDb = dbId ? getFirestore(app, dbId) : getFirestore(app);
-  } catch (err) {
-    console.error('Firestore init error:', err);
-    firestoreDb = getFirestore(app);
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Connected to Firestore backend successfully!");
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn("Please check your Firebase configuration or network connection.");
+    }
+    return false;
   }
 }
 
-export const db = firestoreDb;
-export const auth = getAuth(app);
+// Initial connection verification
+testConnection();
+
 export default app;

@@ -1,9 +1,10 @@
 import { CompanySettings, Product, Customer, Invoice, Quotation, DeliveryNote, PaymentRecord, Lead, CommunicationEmail } from '../types';
 import { initialCompanySettings, initialProducts, initialCustomers, initialInvoices, initialQuotations, initialDeliveryNotes, initialPayments, initialLeads, initialCommunications } from '../data/seedData';
-import { doc, collection, setDoc, deleteDoc, getDocs, onSnapshot, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { doc, collection, setDoc, deleteDoc, getDocs, onSnapshot, getDocFromServer, getDoc } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
+import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 
-export const STORAGE_KEYS = {
+const STORAGE_KEYS = {
   COMPANY: 'invoicepro_company',
   PRODUCTS: 'invoicepro_products',
   CUSTOMERS: 'invoicepro_customers',
@@ -18,11 +19,11 @@ export const STORAGE_KEYS = {
 // Sanitization helper to prevent Firestore "undefined value" and document size limit errors
 export function sanitizeForFirestore<T>(data: T): T {
   if (data === undefined) return null as unknown as T;
-  
+
   const sanitizedJson = JSON.stringify(data, (key, value) => {
     if (value === undefined) return null;
     if (key === 'fileDataUrl' && typeof value === 'string' && value.length > 500000) {
-      // Truncate giant base64 strings for cloud storage safety so document stays under 1MB limit
+      // Truncate giant base64 strings so document stays safely under the 1MB Firestore limit
       return value.slice(0, 100) + '...[file_stored_locally]';
     }
     return value;
@@ -31,7 +32,7 @@ export function sanitizeForFirestore<T>(data: T): T {
   return JSON.parse(sanitizedJson);
 }
 
-// In-memory equality tracking to prevent infinite echo loops
+// In-memory equality tracking to prevent redundant writes and listener loops
 let lastCompanyJson = '';
 let lastProductsJson = '';
 let lastCustomersJson = '';
@@ -42,75 +43,12 @@ let lastPaymentsJson = '';
 let lastLeadsJson = '';
 let lastCommunicationsJson = '';
 
-// Known demo IDs to guarantee removal
+// Known demo IDs to guarantee clean CRM data
 export const FAKE_LEAD_IDS = new Set(['lead-1', 'lead-2', 'lead-3']);
 export const FAKE_EMAIL_IDS = new Set(['email-1', 'email-2', 'email-3']);
 
-// Clean any cached demo items from storage on initial script load
-try {
-  const rawL = localStorage.getItem(STORAGE_KEYS.LEADS);
-  if (rawL) {
-    const arr = JSON.parse(rawL) as Lead[];
-    const filtered = arr.filter(l => !FAKE_LEAD_IDS.has(l.id));
-    if (filtered.length !== arr.length) {
-      localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(filtered));
-      FAKE_LEAD_IDS.forEach(id => deleteDocumentFromFirestore('leads', id));
-    }
-  }
-  const rawC = localStorage.getItem(STORAGE_KEYS.COMMUNICATIONS);
-  if (rawC) {
-    const arr = JSON.parse(rawC) as CommunicationEmail[];
-    const filtered = arr.filter(c => !FAKE_EMAIL_IDS.has(c.id));
-    if (filtered.length !== arr.length) {
-      localStorage.setItem(STORAGE_KEYS.COMMUNICATIONS, JSON.stringify(filtered));
-      FAKE_EMAIL_IDS.forEach(id => deleteDocumentFromFirestore('communications', id));
-    }
-  }
-} catch (e) {
-  // ignore
-}
-
-// Global sync state listeners
-type SyncCallback = (status: 'connected' | 'syncing' | 'offline') => void;
-const syncStatusListeners: SyncCallback[] = [];
-let currentSyncStatus: 'connected' | 'syncing' | 'offline' = 'connected';
-
-export function onSyncStatusChange(cb: SyncCallback): () => void {
-  syncStatusListeners.push(cb);
-  cb(currentSyncStatus);
-  return () => {
-    const idx = syncStatusListeners.indexOf(cb);
-    if (idx >= 0) syncStatusListeners.splice(idx, 1);
-  };
-}
-
-function updateSyncStatus(status: 'connected' | 'syncing' | 'offline') {
-  currentSyncStatus = status;
-  syncStatusListeners.forEach(cb => {
-    try {
-      cb(status);
-    } catch (e) {
-      // ignore
-    }
-  });
-}
-
-export async function testFirestoreConnection(): Promise<boolean> {
-  try {
-    updateSyncStatus('syncing');
-    const testDoc = doc(db, 'system', 'connection_test');
-    await setDoc(testDoc, { connectedAt: new Date().toISOString(), platform: navigator.userAgent }, { merge: true });
-    updateSyncStatus('connected');
-    return true;
-  } catch (e) {
-    console.warn("Firestore connection check notice:", e);
-    updateSyncStatus('offline');
-    return false;
-  }
-}
-
-// Helper local sync
-export function setLocalOnly(key: string, value: any) {
+// Local storage helpers (used as offline secondary cache)
+function setLocalOnly(key: string, value: any) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
@@ -118,51 +56,461 @@ export function setLocalOnly(key: string, value: any) {
   }
 }
 
-// Direct single-document Firestore writer
-export async function saveSingleDocumentToFirestore(colName: string, id: string, data: any): Promise<void> {
-  if (!colName || !id) return;
+export async function testFirestoreConnection(): Promise<boolean> {
   try {
-    updateSyncStatus('syncing');
-    const docRef = doc(db, colName, id);
-    await setDoc(docRef, sanitizeForFirestore(data), { merge: true });
-    updateSyncStatus('connected');
+    const testDoc = doc(db, 'test', 'connection');
+    await getDocFromServer(testDoc);
+    console.log("Firebase Firestore connected successfully!");
+    return true;
   } catch (e) {
-    console.error(`Error saving document [${id}] in collection [${colName}] to Firestore:`, e);
-    updateSyncStatus('offline');
+    console.warn("Firestore connection check notice:", e);
+    return false;
   }
 }
 
-// Direct multi-doc sync helper: writes/upserts items immediately via setDoc
-export async function syncCollectionToFirestore(colName: string, items: Array<{ id: string } & Record<string, any>>): Promise<void> {
-  if (!items || !items.length) return;
+// Check if an authenticated user already has records stored in Firestore
+export async function hasUserCloudData(userId: string): Promise<boolean> {
+  if (!userId) return false;
   try {
-    updateSyncStatus('syncing');
-    const savePromises = items.map(item => {
-      if (!item || !item.id) return Promise.resolve();
-      const docRef = doc(db, colName, item.id);
-      return setDoc(docRef, sanitizeForFirestore(item), { merge: true });
+    const migrationDocRef = doc(db, 'users', userId, 'system', 'migration');
+    const migrationSnap = await getDoc(migrationDocRef);
+    if (migrationSnap.exists()) return true;
+
+    // Check if invoices or products exist for this user
+    const invoicesPath = `users/${userId}/invoices`;
+    const invoicesSnap = await getDocs(collection(db, 'users', userId, 'invoices'));
+    if (!invoicesSnap.empty) return true;
+
+    const productsSnap = await getDocs(collection(db, 'users', userId, 'products'));
+    if (!productsSnap.empty) return true;
+
+    return false;
+  } catch (e) {
+    console.warn('Check cloud data error:', e);
+    return false;
+  }
+}
+
+// Upload initial local data into user's Firestore cloud account (Preserves existing data)
+export async function migrateLocalDataToUserFirestore(
+  userId: string,
+  localData: {
+    companySettings?: CompanySettings;
+    products?: Product[];
+    customers?: Customer[];
+    invoices?: Invoice[];
+    quotations?: Quotation[];
+    deliveryNotes?: DeliveryNote[];
+    payments?: PaymentRecord[];
+    leads?: Lead[];
+    communications?: CommunicationEmail[];
+  }
+) {
+  if (!userId) return;
+  console.log(`Migrating local data to cloud under authenticated user [${userId}]...`);
+
+  try {
+    // 1. Company Settings
+    const settings = localData.companySettings || loadCompanySettings();
+    const settingsPath = `users/${userId}/company_settings/main`;
+    await setDoc(doc(db, 'users', userId, 'company_settings', 'main'), sanitizeForFirestore(settings), { merge: true })
+      .catch(err => handleFirestoreError(err, OperationType.WRITE, settingsPath));
+
+    // 2. Products
+    const products = localData.products || loadProducts();
+    for (const prod of products) {
+      if (!prod?.id) continue;
+      const path = `users/${userId}/products/${prod.id}`;
+      await setDoc(doc(db, 'users', userId, 'products', prod.id), sanitizeForFirestore(prod), { merge: true })
+        .catch(err => handleFirestoreError(err, OperationType.WRITE, path));
+    }
+
+    // 3. Customers
+    const customers = localData.customers || loadCustomers();
+    for (const cust of customers) {
+      if (!cust?.id) continue;
+      const path = `users/${userId}/customers/${cust.id}`;
+      await setDoc(doc(db, 'users', userId, 'customers', cust.id), sanitizeForFirestore(cust), { merge: true })
+        .catch(err => handleFirestoreError(err, OperationType.WRITE, path));
+    }
+
+    // 4. Invoices
+    const invoices = localData.invoices || loadInvoices();
+    for (const inv of invoices) {
+      if (!inv?.id) continue;
+      const path = `users/${userId}/invoices/${inv.id}`;
+      await setDoc(doc(db, 'users', userId, 'invoices', inv.id), sanitizeForFirestore(inv), { merge: true })
+        .catch(err => handleFirestoreError(err, OperationType.WRITE, path));
+    }
+
+    // 5. Quotations
+    const quotations = localData.quotations || loadQuotations();
+    for (const quote of quotations) {
+      if (!quote?.id) continue;
+      const path = `users/${userId}/quotations/${quote.id}`;
+      await setDoc(doc(db, 'users', userId, 'quotations', quote.id), sanitizeForFirestore(quote), { merge: true })
+        .catch(err => handleFirestoreError(err, OperationType.WRITE, path));
+    }
+
+    // 6. Delivery Notes
+    const deliveryNotes = localData.deliveryNotes || loadDeliveryNotes();
+    for (const dn of deliveryNotes) {
+      if (!dn?.id) continue;
+      const path = `users/${userId}/delivery_notes/${dn.id}`;
+      await setDoc(doc(db, 'users', userId, 'delivery_notes', dn.id), sanitizeForFirestore(dn), { merge: true })
+        .catch(err => handleFirestoreError(err, OperationType.WRITE, path));
+    }
+
+    // 7. Payments
+    const payments = localData.payments || loadPayments();
+    for (const pay of payments) {
+      if (!pay?.id) continue;
+      const path = `users/${userId}/payments/${pay.id}`;
+      await setDoc(doc(db, 'users', userId, 'payments', pay.id), sanitizeForFirestore(pay), { merge: true })
+        .catch(err => handleFirestoreError(err, OperationType.WRITE, path));
+    }
+
+    // 8. Leads
+    const leads = (localData.leads || loadLeads()).filter(l => !FAKE_LEAD_IDS.has(l.id));
+    for (const lead of leads) {
+      if (!lead?.id) continue;
+      const path = `users/${userId}/leads/${lead.id}`;
+      await setDoc(doc(db, 'users', userId, 'leads', lead.id), sanitizeForFirestore(lead), { merge: true })
+        .catch(err => handleFirestoreError(err, OperationType.WRITE, path));
+    }
+
+    // 9. Communications
+    const comms = (localData.communications || loadCommunications()).filter(c => !FAKE_EMAIL_IDS.has(c.id));
+    for (const comm of comms) {
+      if (!comm?.id) continue;
+      const path = `users/${userId}/communications/${comm.id}`;
+      await setDoc(doc(db, 'users', userId, 'communications', comm.id), sanitizeForFirestore(comm), { merge: true })
+        .catch(err => handleFirestoreError(err, OperationType.WRITE, path));
+    }
+
+    // Mark migration completed in cloud
+    const markPath = `users/${userId}/system/migration`;
+    await setDoc(doc(db, 'users', userId, 'system', 'migration'), {
+      migratedAt: new Date().toISOString(),
+      source: 'local_storage_conversion',
+      recordsCount: {
+        products: products.length,
+        customers: customers.length,
+        invoices: invoices.length,
+        quotations: quotations.length,
+        deliveryNotes: deliveryNotes.length,
+        payments: payments.length
+      }
+    });
+
+    console.log("Local data migration to Firestore successfully finished!");
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+}
+
+// User-scoped deletion helper
+export async function deleteDocumentFromUserFirestore(userId: string, colName: string, id: string) {
+  if (!userId || !colName || !id) return;
+  const path = `users/${userId}/${colName}/${id}`;
+  try {
+    await deleteDoc(doc(db, 'users', userId, colName, id));
+  } catch (e) {
+    handleFirestoreError(e, OperationType.DELETE, path);
+  }
+}
+
+// User-scoped batch/collection sync helper
+export async function syncUserCollectionToFirestore(userId: string, colName: string, items: Array<{ id: string } & Record<string, any>>) {
+  if (!userId || !items || !items.length) return;
+  try {
+    const savePromises = items.map(async item => {
+      if (!item || !item.id) return;
+      const path = `users/${userId}/${colName}/${item.id}`;
+      try {
+        await setDoc(doc(db, 'users', userId, colName, item.id), sanitizeForFirestore(item), { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, path);
+      }
     });
     await Promise.all(savePromises);
-    updateSyncStatus('connected');
   } catch (e) {
-    console.error(`Firestore sync failed for collection [${colName}]:`, e);
-    updateSyncStatus('offline');
+    console.error(`Firestore sync failed for collection [users/${userId}/${colName}]:`, e);
   }
 }
 
-export async function deleteDocumentFromFirestore(colName: string, id: string): Promise<void> {
-  if (!colName || !id) return;
+// --- Specific Cloud Writers ---
+
+export async function saveCompanySettingsToFirestore(userId: string, settings: CompanySettings) {
+  setLocalOnly(STORAGE_KEYS.COMPANY, settings);
+  if (!userId) return;
+  const path = `users/${userId}/company_settings/main`;
   try {
-    updateSyncStatus('syncing');
-    await deleteDoc(doc(db, colName, id));
-    updateSyncStatus('connected');
+    await setDoc(doc(db, 'users', userId, 'company_settings', 'main'), sanitizeForFirestore(settings), { merge: true });
   } catch (e) {
-    console.error(`Error deleting doc [${id}] from collection [${colName}]:`, e);
-    updateSyncStatus('offline');
+    handleFirestoreError(e, OperationType.WRITE, path);
   }
 }
 
-// --- Company Settings ---
+export async function saveProductToFirestore(userId: string, prod: Product) {
+  if (!userId || !prod?.id) return;
+  const path = `users/${userId}/products/${prod.id}`;
+  try {
+    await setDoc(doc(db, 'users', userId, 'products', prod.id), sanitizeForFirestore(prod), { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+export async function saveCustomerToFirestore(userId: string, cust: Customer) {
+  if (!userId || !cust?.id) return;
+  const sanitized = {
+    ...cust,
+    branches: cust.branches || [],
+    documents: cust.documents || []
+  };
+  const path = `users/${userId}/customers/${cust.id}`;
+  try {
+    await setDoc(doc(db, 'users', userId, 'customers', cust.id), sanitizeForFirestore(sanitized), { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+export async function saveInvoiceToFirestore(userId: string, inv: Invoice) {
+  if (!userId || !inv?.id) return;
+  const path = `users/${userId}/invoices/${inv.id}`;
+  try {
+    await setDoc(doc(db, 'users', userId, 'invoices', inv.id), sanitizeForFirestore(inv), { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+export async function saveQuotationToFirestore(userId: string, q: Quotation) {
+  if (!userId || !q?.id) return;
+  const path = `users/${userId}/quotations/${q.id}`;
+  try {
+    await setDoc(doc(db, 'users', userId, 'quotations', q.id), sanitizeForFirestore(q), { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+export async function saveDeliveryNoteToFirestore(userId: string, dn: DeliveryNote) {
+  if (!userId || !dn?.id) return;
+  const path = `users/${userId}/delivery_notes/${dn.id}`;
+  try {
+    await setDoc(doc(db, 'users', userId, 'delivery_notes', dn.id), sanitizeForFirestore(dn), { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+export async function savePaymentToFirestore(userId: string, pay: PaymentRecord) {
+  if (!userId || !pay?.id) return;
+  const path = `users/${userId}/payments/${pay.id}`;
+  try {
+    await setDoc(doc(db, 'users', userId, 'payments', pay.id), sanitizeForFirestore(pay), { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+export async function saveLeadToFirestore(userId: string, lead: Lead) {
+  if (!userId || !lead?.id || FAKE_LEAD_IDS.has(lead.id)) return;
+  const path = `users/${userId}/leads/${lead.id}`;
+  try {
+    await setDoc(doc(db, 'users', userId, 'leads', lead.id), sanitizeForFirestore(lead), { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+export async function saveCommunicationToFirestore(userId: string, comm: CommunicationEmail) {
+  if (!userId || !comm?.id || FAKE_EMAIL_IDS.has(comm.id)) return;
+  const path = `users/${userId}/communications/${comm.id}`;
+  try {
+    await setDoc(doc(db, 'users', userId, 'communications', comm.id), sanitizeForFirestore(comm), { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+// --- Realtime Firestore Subscriber for Authenticated User ---
+export function subscribeToUserFirestore(
+  userId: string,
+  callbacks: {
+    onCompanyUpdate?: (data: CompanySettings) => void;
+    onProductsUpdate?: (data: Product[]) => void;
+    onCustomersUpdate?: (data: Customer[]) => void;
+    onInvoicesUpdate?: (data: Invoice[]) => void;
+    onQuotationsUpdate?: (data: Quotation[]) => void;
+    onDeliveryNotesUpdate?: (data: DeliveryNote[]) => void;
+    onPaymentsUpdate?: (data: PaymentRecord[]) => void;
+    onLeadsUpdate?: (data: Lead[]) => void;
+    onCommunicationsUpdate?: (data: CommunicationEmail[]) => void;
+  }
+): () => void {
+  if (!userId) return () => {};
+
+  const unsubs: Array<() => void> = [];
+
+  // 1. Company Settings
+  const companyPath = `users/${userId}/company_settings/main`;
+  unsubs.push(
+    onSnapshot(
+      doc(db, 'users', userId, 'company_settings', 'main'),
+      snap => {
+        if (snap.exists()) {
+          const settings = snap.data() as CompanySettings;
+          lastCompanyJson = JSON.stringify(settings);
+          setLocalOnly(STORAGE_KEYS.COMPANY, settings);
+          callbacks.onCompanyUpdate?.(settings);
+        }
+      },
+      err => handleFirestoreError(err, OperationType.GET, companyPath)
+    )
+  );
+
+  // 2. Products
+  const productsPath = `users/${userId}/products`;
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'users', userId, 'products'),
+      snap => {
+        const list = snap.docs.map(d => d.data() as Product);
+        lastProductsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.PRODUCTS, list);
+        callbacks.onProductsUpdate?.(list);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, productsPath)
+    )
+  );
+
+  // 3. Customers
+  const customersPath = `users/${userId}/customers`;
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'users', userId, 'customers'),
+      snap => {
+        const list = snap.docs.map(d => {
+          const c = d.data() as Customer;
+          return {
+            ...c,
+            branches: c.branches || [],
+            documents: c.documents || []
+          };
+        });
+        lastCustomersJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.CUSTOMERS, list);
+        callbacks.onCustomersUpdate?.(list);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, customersPath)
+    )
+  );
+
+  // 4. Invoices
+  const invoicesPath = `users/${userId}/invoices`;
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'users', userId, 'invoices'),
+      snap => {
+        const list = snap.docs.map(d => d.data() as Invoice);
+        lastInvoicesJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.INVOICES, list);
+        callbacks.onInvoicesUpdate?.(list);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, invoicesPath)
+    )
+  );
+
+  // 5. Quotations
+  const quotationsPath = `users/${userId}/quotations`;
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'users', userId, 'quotations'),
+      snap => {
+        const list = snap.docs.map(d => d.data() as Quotation);
+        lastQuotationsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.QUOTATIONS, list);
+        callbacks.onQuotationsUpdate?.(list);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, quotationsPath)
+    )
+  );
+
+  // 6. Delivery Notes
+  const dnPath = `users/${userId}/delivery_notes`;
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'users', userId, 'delivery_notes'),
+      snap => {
+        const list = snap.docs.map(d => d.data() as DeliveryNote);
+        lastDeliveryNotesJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, list);
+        callbacks.onDeliveryNotesUpdate?.(list);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, dnPath)
+    )
+  );
+
+  // 7. Payments
+  const paymentsPath = `users/${userId}/payments`;
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'users', userId, 'payments'),
+      snap => {
+        const list = snap.docs.map(d => d.data() as PaymentRecord);
+        lastPaymentsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.PAYMENTS, list);
+        callbacks.onPaymentsUpdate?.(list);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, paymentsPath)
+    )
+  );
+
+  // 8. Leads
+  const leadsPath = `users/${userId}/leads`;
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'users', userId, 'leads'),
+      snap => {
+        const list = snap.docs
+          .map(d => d.data() as Lead)
+          .filter(l => !FAKE_LEAD_IDS.has(l.id));
+        lastLeadsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.LEADS, list);
+        callbacks.onLeadsUpdate?.(list);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, leadsPath)
+    )
+  );
+
+  // 9. Communications
+  const commsPath = `users/${userId}/communications`;
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'users', userId, 'communications'),
+      snap => {
+        const list = snap.docs
+          .map(d => d.data() as CommunicationEmail)
+          .filter(c => !FAKE_EMAIL_IDS.has(c.id));
+        lastCommunicationsJson = JSON.stringify(list);
+        setLocalOnly(STORAGE_KEYS.COMMUNICATIONS, list);
+        callbacks.onCommunicationsUpdate?.(list);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, commsPath)
+    )
+  );
+
+  return () => {
+    unsubs.forEach(unsub => unsub());
+  };
+}
+
+// --- Local Initial Loaders (used during initialization before user cloud loads) ---
+
 export function loadCompanySettings(): CompanySettings {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.COMPANY);
@@ -172,19 +520,18 @@ export function loadCompanySettings(): CompanySettings {
   }
 }
 
-export function saveCompanySettings(settings: CompanySettings): void {
+export function saveCompanySettings(settings: CompanySettings, userId?: string): void {
   const json = JSON.stringify(settings);
   setLocalOnly(STORAGE_KEYS.COMPANY, settings);
   if (json === lastCompanyJson) return;
   lastCompanyJson = json;
 
-  const sanitized = sanitizeForFirestore(settings);
-  // Write to 'main' and 'profile' to maintain 100% compatibility
-  setDoc(doc(db, 'company_settings', 'main'), sanitized, { merge: true }).catch(() => {});
-  setDoc(doc(db, 'company_settings', 'profile'), sanitized, { merge: true }).catch(() => {});
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    saveCompanySettingsToFirestore(currentUid, settings);
+  }
 }
 
-// --- Products ---
 export function loadProducts(): Product[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
@@ -194,16 +541,18 @@ export function loadProducts(): Product[] {
   }
 }
 
-export function saveProducts(products: Product[]): void {
+export function saveProducts(products: Product[], userId?: string): void {
   const json = JSON.stringify(products);
   setLocalOnly(STORAGE_KEYS.PRODUCTS, products);
   if (json === lastProductsJson) return;
   lastProductsJson = json;
 
-  syncCollectionToFirestore('products', products);
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    syncUserCollectionToFirestore(currentUid, 'products', products);
+  }
 }
 
-// --- Customers ---
 export function loadCustomers(): Customer[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
@@ -213,7 +562,7 @@ export function loadCustomers(): Customer[] {
   }
 }
 
-export function saveCustomers(customers: Customer[]): void {
+export function saveCustomers(customers: Customer[], userId?: string): void {
   const sanitizedCustomers = customers.map(c => ({
     ...c,
     branches: c.branches || [],
@@ -225,10 +574,12 @@ export function saveCustomers(customers: Customer[]): void {
   if (json === lastCustomersJson) return;
   lastCustomersJson = json;
 
-  syncCollectionToFirestore('customers', sanitizedCustomers);
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    syncUserCollectionToFirestore(currentUid, 'customers', sanitizedCustomers);
+  }
 }
 
-// --- Invoices ---
 export function loadInvoices(): Invoice[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.INVOICES);
@@ -238,16 +589,18 @@ export function loadInvoices(): Invoice[] {
   }
 }
 
-export function saveInvoices(invoices: Invoice[]): void {
+export function saveInvoices(invoices: Invoice[], userId?: string): void {
   const json = JSON.stringify(invoices);
   setLocalOnly(STORAGE_KEYS.INVOICES, invoices);
   if (json === lastInvoicesJson) return;
   lastInvoicesJson = json;
 
-  syncCollectionToFirestore('invoices', invoices);
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    syncUserCollectionToFirestore(currentUid, 'invoices', invoices);
+  }
 }
 
-// --- Quotations ---
 export function loadQuotations(): Quotation[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.QUOTATIONS);
@@ -257,16 +610,18 @@ export function loadQuotations(): Quotation[] {
   }
 }
 
-export function saveQuotations(quotations: Quotation[]): void {
+export function saveQuotations(quotations: Quotation[], userId?: string): void {
   const json = JSON.stringify(quotations);
   setLocalOnly(STORAGE_KEYS.QUOTATIONS, quotations);
   if (json === lastQuotationsJson) return;
   lastQuotationsJson = json;
 
-  syncCollectionToFirestore('quotations', quotations);
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    syncUserCollectionToFirestore(currentUid, 'quotations', quotations);
+  }
 }
 
-// --- Delivery Notes ---
 export function loadDeliveryNotes(): DeliveryNote[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.DELIVERY_NOTES);
@@ -276,16 +631,18 @@ export function loadDeliveryNotes(): DeliveryNote[] {
   }
 }
 
-export function saveDeliveryNotes(deliveryNotes: DeliveryNote[]): void {
+export function saveDeliveryNotes(deliveryNotes: DeliveryNote[], userId?: string): void {
   const json = JSON.stringify(deliveryNotes);
   setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, deliveryNotes);
   if (json === lastDeliveryNotesJson) return;
   lastDeliveryNotesJson = json;
 
-  syncCollectionToFirestore('delivery_notes', deliveryNotes);
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    syncUserCollectionToFirestore(currentUid, 'delivery_notes', deliveryNotes);
+  }
 }
 
-// --- Payments ---
 export function loadPayments(): PaymentRecord[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
@@ -295,538 +652,65 @@ export function loadPayments(): PaymentRecord[] {
   }
 }
 
-export function savePayments(payments: PaymentRecord[]): void {
+export function savePayments(payments: PaymentRecord[], userId?: string): void {
   const json = JSON.stringify(payments);
   setLocalOnly(STORAGE_KEYS.PAYMENTS, payments);
   if (json === lastPaymentsJson) return;
   lastPaymentsJson = json;
 
-  syncCollectionToFirestore('payments', payments);
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    syncUserCollectionToFirestore(currentUid, 'payments', payments);
+  }
 }
 
-// --- Leads ---
 export function loadLeads(): Lead[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.LEADS);
     const parsed = data ? (JSON.parse(data) as Lead[]) : initialLeads;
-    const cleaned = parsed.filter(l => !FAKE_LEAD_IDS.has(l.id));
-    if (cleaned.length !== parsed.length) {
-      setLocalOnly(STORAGE_KEYS.LEADS, cleaned);
-      FAKE_LEAD_IDS.forEach(id => deleteDocumentFromFirestore('leads', id));
-    }
-    return cleaned;
+    return parsed.filter(l => !FAKE_LEAD_IDS.has(l.id));
   } catch (e) {
     return [];
   }
 }
 
-export function saveLeads(leads: Lead[]): void {
+export function saveLeads(leads: Lead[], userId?: string): void {
   const cleaned = leads.filter(l => !FAKE_LEAD_IDS.has(l.id));
   const json = JSON.stringify(cleaned);
   setLocalOnly(STORAGE_KEYS.LEADS, cleaned);
   if (json === lastLeadsJson) return;
   lastLeadsJson = json;
 
-  syncCollectionToFirestore('leads', cleaned);
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    syncUserCollectionToFirestore(currentUid, 'leads', cleaned);
+  }
 }
 
-// --- Communications ---
 export function loadCommunications(): CommunicationEmail[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.COMMUNICATIONS);
     const parsed = data ? (JSON.parse(data) as CommunicationEmail[]) : initialCommunications;
-    const cleaned = parsed.filter(c => !FAKE_EMAIL_IDS.has(c.id));
-    if (cleaned.length !== parsed.length) {
-      setLocalOnly(STORAGE_KEYS.COMMUNICATIONS, cleaned);
-      FAKE_EMAIL_IDS.forEach(id => deleteDocumentFromFirestore('communications', id));
-    }
-    return cleaned;
+    return parsed.filter(c => !FAKE_EMAIL_IDS.has(c.id));
   } catch (e) {
     return [];
   }
 }
 
-export function saveCommunications(comms: CommunicationEmail[]): void {
+export function saveCommunications(comms: CommunicationEmail[], userId?: string): void {
   const cleaned = comms.filter(c => !FAKE_EMAIL_IDS.has(c.id));
   const json = JSON.stringify(cleaned);
   setLocalOnly(STORAGE_KEYS.COMMUNICATIONS, cleaned);
   if (json === lastCommunicationsJson) return;
   lastCommunicationsJson = json;
 
-  syncCollectionToFirestore('communications', cleaned);
-}
-
-// Two-way smart merge helper by unique document ID
-export function mergeItemsById<T extends { id: string }>(local: T[], cloud: T[]): T[] {
-  const map = new Map<string, T>();
-  // 1. Populate from local
-  (local || []).forEach(item => {
-    if (item && item.id) map.set(item.id, item);
-  });
-  // 2. Cloud documents overwrite or add (authoritative)
-  (cloud || []).forEach(item => {
-    if (item && item.id) map.set(item.id, item);
-  });
-  return Array.from(map.values());
-}
-
-// Explicit Full-Cloud Fetcher: Pulls all collections from Firestore with smart bidirectional merge
-export async function pullAllFromFirestore(): Promise<{
-  company?: CompanySettings;
-  products?: Product[];
-  customers?: Customer[];
-  invoices?: Invoice[];
-  quotations?: Quotation[];
-  deliveryNotes?: DeliveryNote[];
-  payments?: PaymentRecord[];
-  leads?: Lead[];
-  communications?: CommunicationEmail[];
-}> {
-  updateSyncStatus('syncing');
-  const result: any = {};
-  try {
-    // 1. Company
-    const mainDoc = await getDoc(doc(db, 'company_settings', 'main'));
-    if (mainDoc.exists()) {
-      result.company = mainDoc.data() as CompanySettings;
-    } else {
-      const profDoc = await getDoc(doc(db, 'company_settings', 'profile'));
-      if (profDoc.exists()) {
-        result.company = profDoc.data() as CompanySettings;
-        setDoc(doc(db, 'company_settings', 'main'), sanitizeForFirestore(result.company), { merge: true }).catch(() => {});
-      }
-    }
-    if (result.company) {
-      lastCompanyJson = JSON.stringify(result.company);
-      setLocalOnly(STORAGE_KEYS.COMPANY, result.company);
-    }
-
-    // 2. Products
-    const prodSnap = await getDocs(collection(db, 'products'));
-    const cloudProducts = prodSnap.docs.map(d => d.data() as Product);
-    const localProducts = loadProducts();
-    const mergedProducts = mergeItemsById(localProducts, cloudProducts);
-    result.products = mergedProducts;
-    lastProductsJson = JSON.stringify(mergedProducts);
-    setLocalOnly(STORAGE_KEYS.PRODUCTS, mergedProducts);
-    if (mergedProducts.length > cloudProducts.length) {
-      // Local had products not yet in Firestore, upload them now!
-      syncCollectionToFirestore('products', mergedProducts);
-    }
-
-    // 3. Customers
-    const custSnap = await getDocs(collection(db, 'customers'));
-    const cloudCusts = custSnap.docs.map(d => ({
-      ...d.data(),
-      branches: d.data().branches || [],
-      documents: d.data().documents || []
-    })) as Customer[];
-    const localCusts = loadCustomers();
-    const mergedCusts = mergeItemsById(localCusts, cloudCusts);
-    result.customers = mergedCusts;
-    lastCustomersJson = JSON.stringify(mergedCusts);
-    setLocalOnly(STORAGE_KEYS.CUSTOMERS, mergedCusts);
-    if (mergedCusts.length > cloudCusts.length) {
-      syncCollectionToFirestore('customers', mergedCusts);
-    }
-
-    // 4. Invoices
-    const invSnap = await getDocs(collection(db, 'invoices'));
-    const cloudInvs = invSnap.docs.map(d => d.data() as Invoice);
-    const localInvs = loadInvoices();
-    const mergedInvs = mergeItemsById(localInvs, cloudInvs);
-    result.invoices = mergedInvs;
-    lastInvoicesJson = JSON.stringify(mergedInvs);
-    setLocalOnly(STORAGE_KEYS.INVOICES, mergedInvs);
-    if (mergedInvs.length > cloudInvs.length) {
-      syncCollectionToFirestore('invoices', mergedInvs);
-    }
-
-    // 5. Quotations
-    const qSnap = await getDocs(collection(db, 'quotations'));
-    const cloudQuotes = qSnap.docs.map(d => d.data() as Quotation);
-    const localQuotes = loadQuotations();
-    const mergedQuotes = mergeItemsById(localQuotes, cloudQuotes);
-    result.quotations = mergedQuotes;
-    lastQuotationsJson = JSON.stringify(mergedQuotes);
-    setLocalOnly(STORAGE_KEYS.QUOTATIONS, mergedQuotes);
-    if (mergedQuotes.length > cloudQuotes.length) {
-      syncCollectionToFirestore('quotations', mergedQuotes);
-    }
-
-    // 6. Delivery Notes
-    const dnSnap = await getDocs(collection(db, 'delivery_notes'));
-    const cloudDns = dnSnap.docs.map(d => d.data() as DeliveryNote);
-    const localDns = loadDeliveryNotes();
-    const mergedDns = mergeItemsById(localDns, cloudDns);
-    result.deliveryNotes = mergedDns;
-    lastDeliveryNotesJson = JSON.stringify(mergedDns);
-    setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, mergedDns);
-    if (mergedDns.length > cloudDns.length) {
-      syncCollectionToFirestore('delivery_notes', mergedDns);
-    }
-
-    // 7. Payments
-    const paySnap = await getDocs(collection(db, 'payments'));
-    const cloudPays = paySnap.docs.map(d => d.data() as PaymentRecord);
-    const localPays = loadPayments();
-    const mergedPays = mergeItemsById(localPays, cloudPays);
-    result.payments = mergedPays;
-    lastPaymentsJson = JSON.stringify(mergedPays);
-    setLocalOnly(STORAGE_KEYS.PAYMENTS, mergedPays);
-    if (mergedPays.length > cloudPays.length) {
-      syncCollectionToFirestore('payments', mergedPays);
-    }
-
-    // 8. Leads
-    const leadSnap = await getDocs(collection(db, 'leads'));
-    const cloudLeads = leadSnap.docs
-      .map(d => d.data() as Lead)
-      .filter(l => !FAKE_LEAD_IDS.has(l.id));
-    const localLeads = loadLeads();
-    const mergedLeads = mergeItemsById(localLeads, cloudLeads);
-    result.leads = mergedLeads;
-    lastLeadsJson = JSON.stringify(mergedLeads);
-    setLocalOnly(STORAGE_KEYS.LEADS, mergedLeads);
-    if (mergedLeads.length > cloudLeads.length) {
-      syncCollectionToFirestore('leads', mergedLeads);
-    }
-
-    // 9. Communications
-    const commSnap = await getDocs(collection(db, 'communications'));
-    const cloudComms = commSnap.docs
-      .map(d => d.data() as CommunicationEmail)
-      .filter(c => !FAKE_EMAIL_IDS.has(c.id));
-    const localComms = loadCommunications();
-    const mergedComms = mergeItemsById(localComms, cloudComms);
-    result.communications = mergedComms;
-    lastCommunicationsJson = JSON.stringify(mergedComms);
-    setLocalOnly(STORAGE_KEYS.COMMUNICATIONS, mergedComms);
-    if (mergedComms.length > cloudComms.length) {
-      syncCollectionToFirestore('communications', mergedComms);
-    }
-
-    updateSyncStatus('connected');
-  } catch (e) {
-    console.error('Error in pullAllFromFirestore:', e);
-    updateSyncStatus('offline');
-  }
-  return result;
-}
-
-// Push all local items to cloud immediately
-export async function pushAllLocalDataToFirestore(activeData?: {
-  company?: CompanySettings;
-  products?: Product[];
-  customers?: Customer[];
-  invoices?: Invoice[];
-  quotations?: Quotation[];
-  deliveryNotes?: DeliveryNote[];
-  payments?: PaymentRecord[];
-  leads?: Lead[];
-  communications?: CommunicationEmail[];
-}): Promise<boolean> {
-  updateSyncStatus('syncing');
-  try {
-    const comp = activeData?.company || loadCompanySettings();
-    if (comp) {
-      const sanitized = sanitizeForFirestore(comp);
-      await setDoc(doc(db, 'company_settings', 'main'), sanitized, { merge: true });
-      await setDoc(doc(db, 'company_settings', 'profile'), sanitized, { merge: true });
-    }
-
-    const prods = activeData?.products || loadProducts();
-    if (prods.length > 0) {
-      await syncCollectionToFirestore('products', prods);
-    }
-
-    const custs = activeData?.customers || loadCustomers();
-    if (custs.length > 0) {
-      await syncCollectionToFirestore('customers', custs);
-    }
-
-    const invs = activeData?.invoices || loadInvoices();
-    if (invs.length > 0) {
-      await syncCollectionToFirestore('invoices', invs);
-    }
-
-    const quotes = activeData?.quotations || loadQuotations();
-    if (quotes.length > 0) {
-      await syncCollectionToFirestore('quotations', quotes);
-    }
-
-    const dns = activeData?.deliveryNotes || loadDeliveryNotes();
-    if (dns.length > 0) {
-      await syncCollectionToFirestore('delivery_notes', dns);
-    }
-
-    const pays = activeData?.payments || loadPayments();
-    if (pays.length > 0) {
-      await syncCollectionToFirestore('payments', pays);
-    }
-
-    const leads = (activeData?.leads || loadLeads()).filter(l => !FAKE_LEAD_IDS.has(l.id));
-    if (leads.length > 0) {
-      await syncCollectionToFirestore('leads', leads);
-    }
-
-    const comms = (activeData?.communications || loadCommunications()).filter(c => !FAKE_EMAIL_IDS.has(c.id));
-    if (comms.length > 0) {
-      await syncCollectionToFirestore('communications', comms);
-    }
-
-    updateSyncStatus('connected');
-    return true;
-  } catch (e) {
-    console.error('Failed to push local data to Firestore:', e);
-    updateSyncStatus('offline');
-    return false;
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    syncUserCollectionToFirestore(currentUid, 'communications', cleaned);
   }
 }
 
-// --- Realtime Firestore Subscriber Hook ---
-export function subscribeToFirestore(callbacks: {
-  onCompanyUpdate?: (data: CompanySettings) => void;
-  onProductsUpdate?: (data: Product[]) => void;
-  onCustomersUpdate?: (data: Customer[]) => void;
-  onInvoicesUpdate?: (data: Invoice[]) => void;
-  onQuotationsUpdate?: (data: Quotation[]) => void;
-  onDeliveryNotesUpdate?: (data: DeliveryNote[]) => void;
-  onPaymentsUpdate?: (data: PaymentRecord[]) => void;
-  onLeadsUpdate?: (data: Lead[]) => void;
-  onCommunicationsUpdate?: (data: CommunicationEmail[]) => void;
-}) {
-  const unsubs: Array<() => void> = [];
-
-  // 1. Company Settings
-  unsubs.push(
-    onSnapshot(doc(db, 'company_settings', 'main'), snap => {
-      if (snap.exists()) {
-        const settings = snap.data() as CompanySettings;
-        lastCompanyJson = JSON.stringify(settings);
-        setLocalOnly(STORAGE_KEYS.COMPANY, settings);
-        callbacks.onCompanyUpdate?.(settings);
-      } else {
-        // Fallback: check profile document
-        getDoc(doc(db, 'company_settings', 'profile')).then(profSnap => {
-          if (profSnap.exists()) {
-            const profSettings = profSnap.data() as CompanySettings;
-            lastCompanyJson = JSON.stringify(profSettings);
-            setLocalOnly(STORAGE_KEYS.COMPANY, profSettings);
-            callbacks.onCompanyUpdate?.(profSettings);
-            // Copy to main
-            setDoc(doc(db, 'company_settings', 'main'), sanitizeForFirestore(profSettings), { merge: true }).catch(() => {});
-          } else {
-            const local = loadCompanySettings();
-            setDoc(doc(db, 'company_settings', 'main'), sanitizeForFirestore(local), { merge: true }).catch(() => {});
-          }
-        }).catch(() => {});
-      }
-    }, err => console.warn('Company settings listener notice:', err))
-  );
-
-  // 2. Products (Bidirectional Smart Merge)
-  unsubs.push(
-    onSnapshot(collection(db, 'products'), snap => {
-      if (!snap.empty) {
-        const cloudList = snap.docs.map(d => d.data() as Product);
-        const localList = loadProducts();
-        const merged = mergeItemsById(localList, cloudList);
-        lastProductsJson = JSON.stringify(merged);
-        setLocalOnly(STORAGE_KEYS.PRODUCTS, merged);
-        callbacks.onProductsUpdate?.(merged);
-        if (merged.length > cloudList.length) {
-          syncCollectionToFirestore('products', merged);
-        }
-      } else {
-        const local = loadProducts();
-        if (local.length > 0) {
-          syncCollectionToFirestore('products', local);
-        }
-      }
-    }, err => console.warn('Products listener notice:', err))
-  );
-
-  // 3. Customers
-  unsubs.push(
-    onSnapshot(collection(db, 'customers'), snap => {
-      if (!snap.empty) {
-        const cloudList = snap.docs.map(d => {
-          const c = d.data() as Customer;
-          return {
-            ...c,
-            branches: c.branches || [],
-            documents: c.documents || []
-          };
-        });
-        const localList = loadCustomers();
-        const merged = mergeItemsById(localList, cloudList);
-        lastCustomersJson = JSON.stringify(merged);
-        setLocalOnly(STORAGE_KEYS.CUSTOMERS, merged);
-        callbacks.onCustomersUpdate?.(merged);
-        if (merged.length > cloudList.length) {
-          syncCollectionToFirestore('customers', merged);
-        }
-      } else {
-        const local = loadCustomers();
-        if (local.length > 0) {
-          syncCollectionToFirestore('customers', local);
-        }
-      }
-    }, err => console.warn('Customers listener notice:', err))
-  );
-
-  // 4. Invoices
-  unsubs.push(
-    onSnapshot(collection(db, 'invoices'), snap => {
-      if (!snap.empty) {
-        const cloudList = snap.docs.map(d => d.data() as Invoice);
-        const localList = loadInvoices();
-        const merged = mergeItemsById(localList, cloudList);
-        lastInvoicesJson = JSON.stringify(merged);
-        setLocalOnly(STORAGE_KEYS.INVOICES, merged);
-        callbacks.onInvoicesUpdate?.(merged);
-        if (merged.length > cloudList.length) {
-          syncCollectionToFirestore('invoices', merged);
-        }
-      } else {
-        const local = loadInvoices();
-        if (local.length > 0) {
-          syncCollectionToFirestore('invoices', local);
-        }
-      }
-    }, err => console.warn('Invoices listener notice:', err))
-  );
-
-  // 5. Quotations
-  unsubs.push(
-    onSnapshot(collection(db, 'quotations'), snap => {
-      if (!snap.empty) {
-        const cloudList = snap.docs.map(d => d.data() as Quotation);
-        const localList = loadQuotations();
-        const merged = mergeItemsById(localList, cloudList);
-        lastQuotationsJson = JSON.stringify(merged);
-        setLocalOnly(STORAGE_KEYS.QUOTATIONS, merged);
-        callbacks.onQuotationsUpdate?.(merged);
-        if (merged.length > cloudList.length) {
-          syncCollectionToFirestore('quotations', merged);
-        }
-      } else {
-        const local = loadQuotations();
-        if (local.length > 0) {
-          syncCollectionToFirestore('quotations', local);
-        }
-      }
-    }, err => console.warn('Quotations listener notice:', err))
-  );
-
-  // 6. Delivery Notes
-  unsubs.push(
-    onSnapshot(collection(db, 'delivery_notes'), snap => {
-      if (!snap.empty) {
-        const cloudList = snap.docs.map(d => d.data() as DeliveryNote);
-        const localList = loadDeliveryNotes();
-        const merged = mergeItemsById(localList, cloudList);
-        lastDeliveryNotesJson = JSON.stringify(merged);
-        setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, merged);
-        callbacks.onDeliveryNotesUpdate?.(merged);
-        if (merged.length > cloudList.length) {
-          syncCollectionToFirestore('delivery_notes', merged);
-        }
-      } else {
-        const local = loadDeliveryNotes();
-        if (local.length > 0) {
-          syncCollectionToFirestore('delivery_notes', local);
-        }
-      }
-    }, err => console.warn('Delivery notes listener notice:', err))
-  );
-
-  // 7. Payments
-  unsubs.push(
-    onSnapshot(collection(db, 'payments'), snap => {
-      if (!snap.empty) {
-        const cloudList = snap.docs.map(d => d.data() as PaymentRecord);
-        const localList = loadPayments();
-        const merged = mergeItemsById(localList, cloudList);
-        lastPaymentsJson = JSON.stringify(merged);
-        setLocalOnly(STORAGE_KEYS.PAYMENTS, merged);
-        callbacks.onPaymentsUpdate?.(merged);
-        if (merged.length > cloudList.length) {
-          syncCollectionToFirestore('payments', merged);
-        }
-      } else {
-        const local = loadPayments();
-        if (local.length > 0) {
-          syncCollectionToFirestore('payments', local);
-        }
-      }
-    }, err => console.warn('Payments listener notice:', err))
-  );
-
-  // 8. Leads
-  unsubs.push(
-    onSnapshot(collection(db, 'leads'), snap => {
-      if (!snap.empty) {
-        const cloudList = snap.docs
-          .map(d => d.data() as Lead)
-          .filter(l => !FAKE_LEAD_IDS.has(l.id));
-        const localList = loadLeads();
-        const merged = mergeItemsById(localList, cloudList);
-        lastLeadsJson = JSON.stringify(merged);
-        setLocalOnly(STORAGE_KEYS.LEADS, merged);
-        callbacks.onLeadsUpdate?.(merged);
-        snap.docs.forEach(d => {
-          if (FAKE_LEAD_IDS.has(d.id)) {
-            deleteDocumentFromFirestore('leads', d.id);
-          }
-        });
-        if (merged.length > cloudList.length) {
-          syncCollectionToFirestore('leads', merged);
-        }
-      } else {
-        const local = loadLeads();
-        if (local.length > 0) {
-          syncCollectionToFirestore('leads', local);
-        }
-      }
-    }, err => console.warn('Leads listener notice:', err))
-  );
-
-  // 9. Communications
-  unsubs.push(
-    onSnapshot(collection(db, 'communications'), snap => {
-      if (!snap.empty) {
-        const cloudList = snap.docs
-          .map(d => d.data() as CommunicationEmail)
-          .filter(c => !FAKE_EMAIL_IDS.has(c.id));
-        const localList = loadCommunications();
-        const merged = mergeItemsById(localList, cloudList);
-        lastCommunicationsJson = JSON.stringify(merged);
-        setLocalOnly(STORAGE_KEYS.COMMUNICATIONS, merged);
-        callbacks.onCommunicationsUpdate?.(merged);
-        snap.docs.forEach(d => {
-          if (FAKE_EMAIL_IDS.has(d.id)) {
-            deleteDocumentFromFirestore('communications', d.id);
-          }
-        });
-        if (merged.length > cloudList.length) {
-          syncCollectionToFirestore('communications', merged);
-        }
-      } else {
-        const local = loadCommunications();
-        if (local.length > 0) {
-          syncCollectionToFirestore('communications', local);
-        }
-      }
-    }, err => console.warn('Communications listener notice:', err))
-  );
-
-  return () => {
-    unsubs.forEach(unsub => unsub());
-  };
-}
-
+// Backup & Export utilities
 export function resetAllDataToDefault(): void {
   localStorage.removeItem(STORAGE_KEYS.COMPANY);
   localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
@@ -857,23 +741,24 @@ export function exportDatabaseJSON(): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `InvoicePro_Database_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `RotiBros_Database_Backup_${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-export function importDatabaseJSON(jsonStr: string): boolean {
+export function importDatabaseJSON(jsonStr: string, userId?: string): boolean {
   try {
     const data = JSON.parse(jsonStr);
-    if (data.company) saveCompanySettings(data.company);
-    if (data.products) saveProducts(data.products);
-    if (data.customers) saveCustomers(data.customers);
-    if (data.invoices) saveInvoices(data.invoices);
-    if (data.quotations) saveQuotations(data.quotations);
-    if (data.deliveryNotes) saveDeliveryNotes(data.deliveryNotes);
-    if (data.payments) savePayments(data.payments);
-    if (data.leads) saveLeads(data.leads);
-    if (data.communications) saveCommunications(data.communications);
+    const uid = userId || auth.currentUser?.uid;
+    if (data.company) saveCompanySettings(data.company, uid);
+    if (data.products) saveProducts(data.products, uid);
+    if (data.customers) saveCustomers(data.customers, uid);
+    if (data.invoices) saveInvoices(data.invoices, uid);
+    if (data.quotations) saveQuotations(data.quotations, uid);
+    if (data.deliveryNotes) saveDeliveryNotes(data.deliveryNotes, uid);
+    if (data.payments) savePayments(data.payments, uid);
+    if (data.leads) saveLeads(data.leads, uid);
+    if (data.communications) saveCommunications(data.communications, uid);
     return true;
   } catch (e) {
     console.error('Failed to import database JSON', e);

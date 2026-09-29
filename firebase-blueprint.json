@@ -1,117 +1,236 @@
 {
   "entities": {
     "companySettings": {
-      "collection": "company_settings",
-      "fields": {
-        "name": { "type": "string" },
-        "tradingName": { "type": "string" },
-        "address": { "type": "string" },
-        "email": { "type": "string" },
-        "phone": { "type": "string" },
-        "taxNumber": { "type": "string" },
-        "vatNumber": { "type": "string" },
-        "registrationNumber": { "type": "string" },
-        "bankName": { "type": "string" },
-        "accountName": { "type": "string" },
-        "accountNumber": { "type": "string" },
-        "branchCode": { "type": "string" },
-        "currencySymbol": { "type": "string" },
-        "defaultTerms": { "type": "string" }
-      }
+      "title": "Company Settings",
+      "description": "Enterprise company profile, banking details, and invoicing defaults",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 200, "description": "Company legal name" },
+        "tradingName": { "type": "string", "maxLength": 200, "description": "Company trading name" },
+        "logoUrl": { "type": "string", "maxLength": 1000000, "description": "Logo URL or base64 data" },
+        "address": { "type": "string", "maxLength": 1000, "description": "Physical registered address" },
+        "email": { "type": "string", "maxLength": 255, "description": "Official company email address" },
+        "phone": { "type": "string", "maxLength": 50, "description": "Telephone number" },
+        "taxNumber": { "type": "string", "maxLength": 100, "description": "Tax identifier" },
+        "vatNumber": { "type": "string", "maxLength": 100, "description": "VAT registration identifier" },
+        "registrationNumber": { "type": "string", "maxLength": 100, "description": "Company registration number" },
+        "bankName": { "type": "string", "maxLength": 100, "description": "Bank name" },
+        "accountName": { "type": "string", "maxLength": 100, "description": "Bank account name" },
+        "accountNumber": { "type": "string", "maxLength": 100, "description": "Bank account number" },
+        "branchCode": { "type": "string", "maxLength": 50, "description": "Branch code" },
+        "swiftCode": { "type": "string", "maxLength": 50, "description": "SWIFT code" },
+        "currencySymbol": { "type": "string", "maxLength": 10, "description": "Currency symbol" },
+        "defaultTerms": { "type": "string", "maxLength": 2000, "description": "Default payment terms" }
+      },
+      "required": ["name", "email", "currencySymbol"]
     },
-    "products": {
-      "collection": "products",
-      "fields": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "packQuantity": { "type": "number" },
-        "size": { "type": "string" },
-        "price": { "type": "number" },
-        "description": { "type": "string" },
-        "category": { "type": "string" },
-        "sku": { "type": "string" }
-      }
+    "product": {
+      "title": "Product Item",
+      "description": "Inventory product item for wholesale or retail distribution",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique product ID" },
+        "name": { "type": "string", "maxLength": 200, "description": "Product display name" },
+        "packQuantity": { "type": "number", "description": "Units per pack" },
+        "size": { "type": "string", "maxLength": 50, "description": "Pack size description" },
+        "price": { "type": "number", "description": "Selling price per pack" },
+        "description": { "type": "string", "maxLength": 2000, "description": "Item description" },
+        "category": { "type": "string", "maxLength": 100, "description": "Item category" },
+        "sku": { "type": "string", "maxLength": 100, "description": "Stock Keeping Unit code" }
+      },
+      "required": ["id", "name", "price"]
     },
-    "customers": {
-      "collection": "customers",
-      "fields": {
-        "id": { "type": "string" },
-        "registeredName": { "type": "string" },
-        "code": { "type": "string" },
-        "tradingName": { "type": "string font-mono" },
-        "isTradingSameAsRegistered": { "type": "boolean" },
-        "address": { "type": "string" },
-        "email": { "type": "string" },
-        "contactPerson": { "type": "string" },
-        "phone": { "type": "string" },
-        "taxNumber": { "type": "string" },
-        "vatNumber": { "type": "string" },
-        "registrationNumber": { "type": "string" }
-      }
+    "customer": {
+      "title": "Customer Record",
+      "description": "Commercial client details including branches and uploaded documents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique customer ID" },
+        "registeredName": { "type": "string", "maxLength": 200, "description": "Registered enterprise entity name" },
+        "code": { "type": "string", "maxLength": 50, "description": "Customer account code" },
+        "tradingName": { "type": "string", "maxLength": 200, "description": "Trading as name" },
+        "isTradingSameAsRegistered": { "type": "boolean", "description": "Whether trading matches registered name" },
+        "address": { "type": "string", "maxLength": 1000, "description": "Billing address" },
+        "email": { "type": "string", "maxLength": 255, "description": "Customer contact email" },
+        "contactPerson": { "type": "string", "maxLength": 200, "description": "Primary contact individual" },
+        "phone": { "type": "string", "maxLength": 50, "description": "Primary phone" },
+        "taxNumber": { "type": "string", "maxLength": 100, "description": "Tax number" },
+        "vatNumber": { "type": "string", "maxLength": 100, "description": "VAT number" },
+        "registrationNumber": { "type": "string", "maxLength": 100, "description": "Registration number" },
+        "createdAt": { "type": "string", "maxLength": 50, "description": "Record creation ISO timestamp" }
+      },
+      "required": ["id", "registeredName", "code"]
     },
-    "invoices": {
-      "collection": "invoices",
-      "fields": {
-        "id": { "type": "string" },
-        "invoiceNumber": { "type": "string" },
-        "customerId": { "type": "string" },
-        "branchId": { "type": "string" },
-        "subtotal": { "type": "number" },
-        "taxRate": { "type": "number" },
-        "taxAmount": { "type": "number" },
-        "totalAmount": { "type": "number" },
-        "amountPaid": { "type": "number" },
-        "balanceDue": { "type": "number" },
-        "status": { "type": "string" }
-      }
+    "invoice": {
+      "title": "Commercial Invoice",
+      "description": "Tax invoice record containing line items and payment status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique invoice ID" },
+        "invoiceNumber": { "type": "string", "maxLength": 50, "description": "Invoice sequence number" },
+        "customerId": { "type": "string", "maxLength": 128, "description": "Associated customer ID" },
+        "branchId": { "type": "string", "maxLength": 128, "description": "Associated branch ID" },
+        "issueDate": { "type": "string", "maxLength": 30, "description": "Date issued (YYYY-MM-DD)" },
+        "dueDate": { "type": "string", "maxLength": 30, "description": "Payment due date" },
+        "subtotal": { "type": "number", "description": "Subtotal before tax" },
+        "taxRate": { "type": "number", "description": "Tax percentage" },
+        "taxAmount": { "type": "number", "description": "Total tax calculated" },
+        "totalAmount": { "type": "number", "description": "Gross invoice total" },
+        "amountPaid": { "type": "number", "description": "Total amount paid to date" },
+        "balanceDue": { "type": "number", "description": "Remaining unpaid balance" },
+        "status": { "type": "string", "maxLength": 30, "description": "Payment and dispatch status" },
+        "notes": { "type": "string", "maxLength": 2000, "description": "Invoice notes" },
+        "deliveryNoteId": { "type": "string", "maxLength": 128, "description": "Linked delivery dispatch note ID" },
+        "createdAt": { "type": "string", "maxLength": 50, "description": "Creation timestamp" }
+      },
+      "required": ["id", "invoiceNumber", "customerId", "totalAmount", "status"]
     },
-    "quotations": {
-      "collection": "quotations",
-      "fields": {
-        "id": { "type": "string" },
-        "quotationNumber": { "type": "string" },
-        "customerId": { "type": "string" },
-        "branchId": { "type": "string" },
-        "totalAmount": { "type": "number" }
-      }
+    "quotation": {
+      "title": "Quotation Estimate",
+      "description": "Price estimate and quote issued to customer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique quote ID" },
+        "quotationNumber": { "type": "string", "maxLength": 50, "description": "Quote number" },
+        "customerId": { "type": "string", "maxLength": 128, "description": "Associated customer ID" },
+        "branchId": { "type": "string", "maxLength": 128, "description": "Optional branch ID" },
+        "issueDate": { "type": "string", "maxLength": 30, "description": "Issue date" },
+        "expiryDate": { "type": "string", "maxLength": 30, "description": "Expiry date" },
+        "subtotal": { "type": "number", "description": "Subtotal amount" },
+        "taxRate": { "type": "number", "description": "Tax percentage" },
+        "taxAmount": { "type": "number", "description": "Tax amount" },
+        "totalAmount": { "type": "number", "description": "Total quoted amount" },
+        "status": { "type": "string", "maxLength": 30, "description": "Quote status" },
+        "notes": { "type": "string", "maxLength": 2000, "description": "Notes" },
+        "convertedInvoiceId": { "type": "string", "maxLength": 128, "description": "Converted invoice ID" },
+        "createdAt": { "type": "string", "maxLength": 50, "description": "Creation timestamp" }
+      },
+      "required": ["id", "quotationNumber", "customerId", "totalAmount"]
     },
-    "deliveryNotes": {
-      "collection": "delivery_notes",
-      "fields": {
-        "id": { "type": "string" },
-        "deliveryNoteNumber": { "type": "string" },
-        "customerId": { "type": "string" },
-        "branchId": { "type": "string font-mono" }
-      }
+    "deliveryNote": {
+      "title": "Delivery Note",
+      "description": "Logistics dispatch documentation for drivers and recipient acknowledgement",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique delivery note ID" },
+        "deliveryNoteNumber": { "type": "string", "maxLength": 50, "description": "Delivery note sequence number" },
+        "invoiceId": { "type": "string", "maxLength": 128, "description": "Associated invoice ID" },
+        "quotationId": { "type": "string", "maxLength": 128, "description": "Associated quotation ID" },
+        "customerId": { "type": "string", "maxLength": 128, "description": "Associated customer ID" },
+        "branchId": { "type": "string", "maxLength": 128, "description": "Target branch ID" },
+        "issueDate": { "type": "string", "maxLength": 30, "description": "Date of dispatch" },
+        "deliveryAddress": { "type": "string", "maxLength": 1000, "description": "Destination address" },
+        "recipientContact": { "type": "string", "maxLength": 200, "description": "Recipient name" },
+        "recipientPhone": { "type": "string", "maxLength": 50, "description": "Recipient phone" },
+        "driverNotes": { "type": "string", "maxLength": 2000, "description": "Delivery directions" },
+        "status": { "type": "string", "maxLength": 30, "description": "Delivery status" },
+        "createdAt": { "type": "string", "maxLength": 50, "description": "Creation timestamp" }
+      },
+      "required": ["id", "deliveryNoteNumber", "customerId", "status"]
     },
-    "payments": {
-      "collection": "payments",
-      "fields": {
-        "id": { "type": "string" },
-        "invoiceNumber": { "type": "string font-mono" },
-        "amount": { "type": "number" }
-      }
+    "paymentRecord": {
+      "title": "Payment Record",
+      "description": "Receipt of payment credited against customer invoice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique payment record ID" },
+        "invoiceId": { "type": "string", "maxLength": 128, "description": "Paid invoice ID" },
+        "invoiceNumber": { "type": "string", "maxLength": 50, "description": "Invoice number reference" },
+        "customerId": { "type": "string", "maxLength": 128, "description": "Associated customer ID" },
+        "branchId": { "type": "string", "maxLength": 128, "description": "Optional branch ID" },
+        "amount": { "type": "number", "description": "Payment amount received" },
+        "paymentDate": { "type": "string", "maxLength": 30, "description": "Payment date" },
+        "paymentMethod": { "type": "string", "maxLength": 50, "description": "Payment method" },
+        "referenceNumber": { "type": "string", "maxLength": 100, "description": "Bank transfer or cheque reference" },
+        "notes": { "type": "string", "maxLength": 2000, "description": "Payment memo" }
+      },
+      "required": ["id", "invoiceId", "amount", "paymentDate"]
     },
-    "leads": {
-      "collection": "leads",
-      "fields": {
-        "id": { "type": "string" },
-        "leadNumber": { "type": "string" },
-        "name": { "type": "string" },
-        "companyName": { "type": "string" },
-        "email": { "type": "string" },
-        "status": { "type": "string" }
-      }
+    "lead": {
+      "title": "Sales Lead",
+      "description": "Prospective client in commercial sales pipeline",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique lead ID" },
+        "leadNumber": { "type": "string", "maxLength": 50, "description": "Lead identifier" },
+        "name": { "type": "string", "maxLength": 200, "description": "Lead contact name" },
+        "companyName": { "type": "string", "maxLength": 200, "description": "Company name" },
+        "email": { "type": "string", "maxLength": 255, "description": "Email address" },
+        "phone": { "type": "string", "maxLength": 50, "description": "Phone number" },
+        "status": { "type": "string", "maxLength": 30, "description": "Pipeline status" },
+        "source": { "type": "string", "maxLength": 50, "description": "Lead source channel" },
+        "priority": { "type": "string", "maxLength": 30, "description": "Priority tier" },
+        "estimatedValue": { "type": "number", "description": "Estimated deal value" },
+        "notes": { "type": "string", "maxLength": 2000, "description": "Lead interaction history" },
+        "assignedTo": { "type": "string", "maxLength": 100, "description": "Staff assignee" },
+        "lastContactDate": { "type": "string", "maxLength": 30, "description": "Last communication date" },
+        "nextFollowUpDate": { "type": "string", "maxLength": 30, "description": "Next scheduled follow-up" },
+        "convertedCustomerId": { "type": "string", "maxLength": 128, "description": "Converted customer reference" },
+        "convertedQuotationId": { "type": "string", "maxLength": 128, "description": "Converted quote reference" },
+        "createdAt": { "type": "string", "maxLength": 50, "description": "Date created" },
+        "updatedAt": { "type": "string", "maxLength": 50, "description": "Last updated timestamp" }
+      },
+      "required": ["id", "leadNumber", "name", "status"]
     },
-    "communications": {
-      "collection": "communications",
-      "fields": {
-        "id": { "type": "string" },
-        "subject": { "type": "string" },
-        "folder": { "type": "string" },
-        "status": { "type": "string" },
-        "date": { "type": "string" }
-      }
+    "communicationEmail": {
+      "title": "Communication Email",
+      "description": "Client interaction email message thread record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$", "description": "Unique email ID" },
+        "folder": { "type": "string", "maxLength": 30, "description": "Email folder (inbox, sent, drafts)" },
+        "direction": { "type": "string", "maxLength": 20, "description": "Inbound or outbound" },
+        "status": { "type": "string", "maxLength": 30, "description": "Read, unread, replied" },
+        "subject": { "type": "string", "maxLength": 500, "description": "Email subject" },
+        "body": { "type": "string", "maxLength": 50000, "description": "Message content" },
+        "date": { "type": "string", "maxLength": 50, "description": "Timestamp" },
+        "leadId": { "type": "string", "maxLength": 128, "description": "Associated lead ID" },
+        "leadNumber": { "type": "string", "maxLength": 50, "description": "Associated lead number" },
+        "customerId": { "type": "string", "maxLength": 128, "description": "Associated customer ID" },
+        "customerName": { "type": "string", "maxLength": 200, "description": "Associated customer name" },
+        "relatedDocType": { "type": "string", "maxLength": 50, "description": "Linked document type" },
+        "relatedDocNumber": { "type": "string", "maxLength": 50, "description": "Linked document number" },
+        "starred": { "type": "boolean", "description": "Starred status" }
+      },
+      "required": ["id", "folder", "direction", "subject", "body"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/company_settings/{settingId}": {
+      "schema": "companySettings",
+      "description": "Company profile and bank settings under user account"
+    },
+    "/users/{userId}/products/{productId}": {
+      "schema": "product",
+      "description": "Product catalogue under user account"
+    },
+    "/users/{userId}/customers/{customerId}": {
+      "schema": "customer",
+      "description": "Customer list, branch profiles, and documents under user account"
+    },
+    "/users/{userId}/invoices/{invoiceId}": {
+      "schema": "invoice",
+      "description": "Invoices and line item summaries under user account"
+    },
+    "/users/{userId}/quotations/{quotationId}": {
+      "schema": "quotation",
+      "description": "Quotation estimates under user account"
+    },
+    "/users/{userId}/delivery_notes/{deliveryNoteId}": {
+      "schema": "deliveryNote",
+      "description": "Delivery dispatch notes under user account"
+    },
+    "/users/{userId}/payments/{paymentId}": {
+      "schema": "paymentRecord",
+      "description": "Customer payment records under user account"
+    },
+    "/users/{userId}/leads/{leadId}": {
+      "schema": "lead",
+      "description": "Sales CRM pipeline leads under user account"
+    },
+    "/users/{userId}/communications/{commId}": {
+      "schema": "communicationEmail",
+      "description": "Email communications and client correspondence under user account"
     }
   }
 }
