@@ -43,7 +43,13 @@ let lastPaymentsJson = '';
 let lastLeadsJson = '';
 let lastCommunicationsJson = '';
 
-// Known demo IDs to guarantee clean CRM data
+// Known demo/fake IDs to eliminate all mock data from application and cloud
+export const FAKE_PRODUCT_IDS = new Set(['prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5', 'prod-6']);
+export const FAKE_CUSTOMER_IDS = new Set(['cust-1', 'cust-2', 'cust-3']);
+export const FAKE_INVOICE_IDS = new Set(['inv-1', 'inv-2', 'inv-3', 'inv-4', 'inv-5']);
+export const FAKE_QUOTATION_IDS = new Set(['qt-1', 'quote-1']);
+export const FAKE_DELIVERY_NOTE_IDS = new Set(['dn-1', 'dn-2']);
+export const FAKE_PAYMENT_IDS = new Set(['pay-1']);
 export const FAKE_LEAD_IDS = new Set(['lead-1', 'lead-2', 'lead-3']);
 export const FAKE_EMAIL_IDS = new Set(['email-1', 'email-2', 'email-3']);
 
@@ -88,6 +94,43 @@ export async function hasUserCloudData(userId: string): Promise<boolean> {
   } catch (e) {
     console.warn('Check cloud data error:', e);
     return false;
+  }
+}
+
+// Direct Cloud Fetch (used for multi-device sync and instant cloud refresh)
+export async function fetchUserCloudData(userId: string) {
+  if (!userId) return null;
+  try {
+    const [companySnap, prodSnap, custSnap, invSnap, quoteSnap, dnSnap, paySnap] = await Promise.all([
+      getDoc(doc(db, 'users', userId, 'company_settings', 'main')),
+      getDocs(collection(db, 'users', userId, 'products')),
+      getDocs(collection(db, 'users', userId, 'customers')),
+      getDocs(collection(db, 'users', userId, 'invoices')),
+      getDocs(collection(db, 'users', userId, 'quotations')),
+      getDocs(collection(db, 'users', userId, 'delivery_notes')),
+      getDocs(collection(db, 'users', userId, 'payments')),
+    ]);
+
+    const companySettings = companySnap.exists() ? (companySnap.data() as CompanySettings) : null;
+    const products = prodSnap.docs.map(d => d.data() as Product);
+    const customers = custSnap.docs.map(d => d.data() as Customer);
+    const invoices = invSnap.docs.map(d => d.data() as Invoice);
+    const quotations = quoteSnap.docs.map(d => d.data() as Quotation);
+    const deliveryNotes = dnSnap.docs.map(d => d.data() as DeliveryNote);
+    const payments = paySnap.docs.map(d => d.data() as PaymentRecord);
+
+    return {
+      companySettings,
+      products,
+      customers,
+      invoices,
+      quotations,
+      deliveryNotes,
+      payments
+    };
+  } catch (e) {
+    console.error("fetchUserCloudData error:", e);
+    return null;
   }
 }
 
@@ -402,7 +445,9 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'products'),
       snap => {
-        const cloudList = snap.docs.map(d => d.data() as Product);
+        const cloudList = snap.docs
+          .map(d => d.data() as Product)
+          .filter(p => !FAKE_PRODUCT_IDS.has(p.id));
         const resolved = safeMergeRecords(cloudList, loadProducts, (items) => {
           syncUserCollectionToFirestore(userId, 'products', items);
         });
@@ -420,14 +465,16 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'customers'),
       snap => {
-        const cloudList = snap.docs.map(d => {
-          const c = d.data() as Customer;
-          return {
-            ...c,
-            branches: c.branches || [],
-            documents: c.documents || []
-          };
-        });
+        const cloudList = snap.docs
+          .map(d => {
+            const c = d.data() as Customer;
+            return {
+              ...c,
+              branches: c.branches || [],
+              documents: c.documents || []
+            };
+          })
+          .filter(c => !FAKE_CUSTOMER_IDS.has(c.id));
         const resolved = safeMergeRecords(cloudList, loadCustomers, (items) => {
           syncUserCollectionToFirestore(userId, 'customers', items);
         });
@@ -445,7 +492,9 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'invoices'),
       snap => {
-        const cloudList = snap.docs.map(d => d.data() as Invoice);
+        const cloudList = snap.docs
+          .map(d => d.data() as Invoice)
+          .filter(i => !FAKE_INVOICE_IDS.has(i.id));
         const resolved = safeMergeRecords(cloudList, loadInvoices, (items) => {
           syncUserCollectionToFirestore(userId, 'invoices', items);
         });
@@ -463,7 +512,9 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'quotations'),
       snap => {
-        const cloudList = snap.docs.map(d => d.data() as Quotation);
+        const cloudList = snap.docs
+          .map(d => d.data() as Quotation)
+          .filter(q => !FAKE_QUOTATION_IDS.has(q.id));
         const resolved = safeMergeRecords(cloudList, loadQuotations, (items) => {
           syncUserCollectionToFirestore(userId, 'quotations', items);
         });
@@ -481,7 +532,9 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'delivery_notes'),
       snap => {
-        const cloudList = snap.docs.map(d => d.data() as DeliveryNote);
+        const cloudList = snap.docs
+          .map(d => d.data() as DeliveryNote)
+          .filter(d => !FAKE_DELIVERY_NOTE_IDS.has(d.id));
         const resolved = safeMergeRecords(cloudList, loadDeliveryNotes, (items) => {
           syncUserCollectionToFirestore(userId, 'delivery_notes', items);
         });
@@ -499,7 +552,9 @@ export function subscribeToUserFirestore(
     onSnapshot(
       collection(db, 'users', userId, 'payments'),
       snap => {
-        const cloudList = snap.docs.map(d => d.data() as PaymentRecord);
+        const cloudList = snap.docs
+          .map(d => d.data() as PaymentRecord)
+          .filter(p => !FAKE_PAYMENT_IDS.has(p.id));
         const resolved = safeMergeRecords(cloudList, loadPayments, (items) => {
           syncUserCollectionToFirestore(userId, 'payments', items);
         });
@@ -576,43 +631,46 @@ export function saveCompanySettings(settings: CompanySettings, userId?: string):
 export function loadProducts(): Product[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    if (!data) return initialProducts;
+    if (!data) return [];
     const parsed = JSON.parse(data) as Product[];
-    return parsed && parsed.length > 0 ? parsed : initialProducts;
+    return (parsed || []).filter(p => !FAKE_PRODUCT_IDS.has(p.id));
   } catch (e) {
-    return initialProducts;
+    return [];
   }
 }
 
 export function saveProducts(products: Product[], userId?: string): void {
-  const json = JSON.stringify(products);
-  setLocalOnly(STORAGE_KEYS.PRODUCTS, products);
+  const cleaned = products.filter(p => !FAKE_PRODUCT_IDS.has(p.id));
+  const json = JSON.stringify(cleaned);
+  setLocalOnly(STORAGE_KEYS.PRODUCTS, cleaned);
   if (json === lastProductsJson) return;
   lastProductsJson = json;
 
   const currentUid = userId || auth.currentUser?.uid;
   if (currentUid) {
-    syncUserCollectionToFirestore(currentUid, 'products', products);
+    syncUserCollectionToFirestore(currentUid, 'products', cleaned);
   }
 }
 
 export function loadCustomers(): Customer[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    if (!data) return initialCustomers;
+    if (!data) return [];
     const parsed = JSON.parse(data) as Customer[];
-    return parsed && parsed.length > 0 ? parsed : initialCustomers;
+    return (parsed || []).filter(c => !FAKE_CUSTOMER_IDS.has(c.id));
   } catch (e) {
-    return initialCustomers;
+    return [];
   }
 }
 
 export function saveCustomers(customers: Customer[], userId?: string): void {
-  const sanitizedCustomers = customers.map(c => ({
-    ...c,
-    branches: c.branches || [],
-    documents: c.documents || []
-  }));
+  const sanitizedCustomers = customers
+    .filter(c => !FAKE_CUSTOMER_IDS.has(c.id))
+    .map(c => ({
+      ...c,
+      branches: c.branches || [],
+      documents: c.documents || []
+    }));
 
   const json = JSON.stringify(sanitizedCustomers);
   setLocalOnly(STORAGE_KEYS.CUSTOMERS, sanitizedCustomers);
@@ -628,92 +686,131 @@ export function saveCustomers(customers: Customer[], userId?: string): void {
 export function loadInvoices(): Invoice[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.INVOICES);
-    if (!data) return initialInvoices;
+    if (!data) return [];
     const parsed = JSON.parse(data) as Invoice[];
-    return parsed && parsed.length > 0 ? parsed : initialInvoices;
+    return (parsed || []).filter(i => !FAKE_INVOICE_IDS.has(i.id));
   } catch (e) {
-    return initialInvoices;
+    return [];
   }
 }
 
 export function saveInvoices(invoices: Invoice[], userId?: string): void {
-  const json = JSON.stringify(invoices);
-  setLocalOnly(STORAGE_KEYS.INVOICES, invoices);
+  const cleaned = invoices.filter(i => !FAKE_INVOICE_IDS.has(i.id));
+  const json = JSON.stringify(cleaned);
+  setLocalOnly(STORAGE_KEYS.INVOICES, cleaned);
   if (json === lastInvoicesJson) return;
   lastInvoicesJson = json;
 
   const currentUid = userId || auth.currentUser?.uid;
   if (currentUid) {
-    syncUserCollectionToFirestore(currentUid, 'invoices', invoices);
+    syncUserCollectionToFirestore(currentUid, 'invoices', cleaned);
   }
 }
 
 export function loadQuotations(): Quotation[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.QUOTATIONS);
-    if (!data) return initialQuotations;
+    if (!data) return [];
     const parsed = JSON.parse(data) as Quotation[];
-    return parsed && parsed.length > 0 ? parsed : initialQuotations;
+    return (parsed || []).filter(q => !FAKE_QUOTATION_IDS.has(q.id));
   } catch (e) {
-    return initialQuotations;
+    return [];
   }
 }
 
 export function saveQuotations(quotations: Quotation[], userId?: string): void {
-  const json = JSON.stringify(quotations);
-  setLocalOnly(STORAGE_KEYS.QUOTATIONS, quotations);
+  const cleaned = quotations.filter(q => !FAKE_QUOTATION_IDS.has(q.id));
+  const json = JSON.stringify(cleaned);
+  setLocalOnly(STORAGE_KEYS.QUOTATIONS, cleaned);
   if (json === lastQuotationsJson) return;
   lastQuotationsJson = json;
 
   const currentUid = userId || auth.currentUser?.uid;
   if (currentUid) {
-    syncUserCollectionToFirestore(currentUid, 'quotations', quotations);
+    syncUserCollectionToFirestore(currentUid, 'quotations', cleaned);
   }
 }
 
 export function loadDeliveryNotes(): DeliveryNote[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.DELIVERY_NOTES);
-    if (!data) return initialDeliveryNotes;
+    if (!data) return [];
     const parsed = JSON.parse(data) as DeliveryNote[];
-    return parsed && parsed.length > 0 ? parsed : initialDeliveryNotes;
+    return (parsed || []).filter(d => !FAKE_DELIVERY_NOTE_IDS.has(d.id));
   } catch (e) {
-    return initialDeliveryNotes;
+    return [];
   }
 }
 
 export function saveDeliveryNotes(deliveryNotes: DeliveryNote[], userId?: string): void {
-  const json = JSON.stringify(deliveryNotes);
-  setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, deliveryNotes);
+  const cleaned = deliveryNotes.filter(d => !FAKE_DELIVERY_NOTE_IDS.has(d.id));
+  const json = JSON.stringify(cleaned);
+  setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, cleaned);
   if (json === lastDeliveryNotesJson) return;
   lastDeliveryNotesJson = json;
 
   const currentUid = userId || auth.currentUser?.uid;
   if (currentUid) {
-    syncUserCollectionToFirestore(currentUid, 'delivery_notes', deliveryNotes);
+    syncUserCollectionToFirestore(currentUid, 'delivery_notes', cleaned);
   }
 }
 
 export function loadPayments(): PaymentRecord[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-    if (!data) return initialPayments;
+    if (!data) return [];
     const parsed = JSON.parse(data) as PaymentRecord[];
-    return parsed && parsed.length > 0 ? parsed : initialPayments;
+    return (parsed || []).filter(p => !FAKE_PAYMENT_IDS.has(p.id));
   } catch (e) {
-    return initialPayments;
+    return [];
   }
 }
 
 export function savePayments(payments: PaymentRecord[], userId?: string): void {
-  const json = JSON.stringify(payments);
-  setLocalOnly(STORAGE_KEYS.PAYMENTS, payments);
+  const cleaned = payments.filter(p => !FAKE_PAYMENT_IDS.has(p.id));
+  const json = JSON.stringify(cleaned);
+  setLocalOnly(STORAGE_KEYS.PAYMENTS, cleaned);
   if (json === lastPaymentsJson) return;
   lastPaymentsJson = json;
 
   const currentUid = userId || auth.currentUser?.uid;
   if (currentUid) {
-    syncUserCollectionToFirestore(currentUid, 'payments', payments);
+    syncUserCollectionToFirestore(currentUid, 'payments', cleaned);
+  }
+}
+
+// Purge all mock/demo records from local storage and user Firestore cloud database
+export async function purgeFakeDataFromCloudAndLocal(userId?: string): Promise<void> {
+  const prods = loadProducts().filter(p => !FAKE_PRODUCT_IDS.has(p.id));
+  const custs = loadCustomers().filter(c => !FAKE_CUSTOMER_IDS.has(c.id));
+  const invs = loadInvoices().filter(i => !FAKE_INVOICE_IDS.has(i.id));
+  const quotes = loadQuotations().filter(q => !FAKE_QUOTATION_IDS.has(q.id));
+  const dns = loadDeliveryNotes().filter(d => !FAKE_DELIVERY_NOTE_IDS.has(d.id));
+  const pays = loadPayments().filter(p => !FAKE_PAYMENT_IDS.has(p.id));
+  const leads = loadLeads().filter(l => !FAKE_LEAD_IDS.has(l.id));
+  const comms = loadCommunications().filter(c => !FAKE_EMAIL_IDS.has(c.id));
+
+  setLocalOnly(STORAGE_KEYS.PRODUCTS, prods);
+  setLocalOnly(STORAGE_KEYS.CUSTOMERS, custs);
+  setLocalOnly(STORAGE_KEYS.INVOICES, invs);
+  setLocalOnly(STORAGE_KEYS.QUOTATIONS, quotes);
+  setLocalOnly(STORAGE_KEYS.DELIVERY_NOTES, dns);
+  setLocalOnly(STORAGE_KEYS.PAYMENTS, pays);
+  setLocalOnly(STORAGE_KEYS.LEADS, leads);
+  setLocalOnly(STORAGE_KEYS.COMMUNICATIONS, comms);
+
+  const uid = userId || auth.currentUser?.uid;
+  if (uid) {
+    const deleteTasks: Promise<any>[] = [];
+    FAKE_PRODUCT_IDS.forEach(id => deleteTasks.push(deleteDoc(doc(db, 'users', uid, 'products', id)).catch(() => {})));
+    FAKE_CUSTOMER_IDS.forEach(id => deleteTasks.push(deleteDoc(doc(db, 'users', uid, 'customers', id)).catch(() => {})));
+    FAKE_INVOICE_IDS.forEach(id => deleteTasks.push(deleteDoc(doc(db, 'users', uid, 'invoices', id)).catch(() => {})));
+    FAKE_QUOTATION_IDS.forEach(id => deleteTasks.push(deleteDoc(doc(db, 'users', uid, 'quotations', id)).catch(() => {})));
+    FAKE_DELIVERY_NOTE_IDS.forEach(id => deleteTasks.push(deleteDoc(doc(db, 'users', uid, 'delivery_notes', id)).catch(() => {})));
+    FAKE_PAYMENT_IDS.forEach(id => deleteTasks.push(deleteDoc(doc(db, 'users', uid, 'payments', id)).catch(() => {})));
+    FAKE_LEAD_IDS.forEach(id => deleteTasks.push(deleteDoc(doc(db, 'users', uid, 'leads', id)).catch(() => {})));
+    FAKE_EMAIL_IDS.forEach(id => deleteTasks.push(deleteDoc(doc(db, 'users', uid, 'communications', id)).catch(() => {})));
+    await Promise.all(deleteTasks);
   }
 }
 

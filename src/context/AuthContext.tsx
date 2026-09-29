@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { User, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 
 export type SyncState = 'synced' | 'syncing' | 'offline' | 'error';
@@ -27,6 +27,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Check for redirect result when returning from redirect auth flow
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          setCurrentUser(result.user);
+          setSyncState('synced');
+          setLastSyncedAt(new Date());
+        }
+      })
+      .catch((err) => {
+        console.warn('Redirect auth check notice:', err);
+      });
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setIsLoading(false);
@@ -59,8 +72,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (err?.code === 'auth/popup-blocked') {
-        setAuthError('Sign-in popup was blocked by your browser. Please tap "Continue with Google" again or check your browser popup settings.');
-        setSyncState('offline');
+        console.warn('Popup blocked, attempting redirect sign-in flow...');
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectErr: any) {
+          setAuthError('Sign-in popup was blocked by your browser. Please allow popups for this site and tap Continue with Google.');
+          setSyncState('offline');
+          return;
+        }
+      }
+
+      if (err?.code === 'auth/unauthorized-domain') {
+        const domain = window.location.hostname;
+        const msg = `This domain (${domain}) is not authorized in Firebase Console yet. Please add "${domain}" under Firebase Console -> Authentication -> Settings -> Authorized Domains.`;
+        console.error(msg);
+        setAuthError(msg);
+        setSyncState('error');
         return;
       }
 

@@ -18,7 +18,7 @@ import {
   migrateLocalDataToUserFirestore,
   subscribeToUserFirestore,
   fetchUserCloudData,
-  populateRotiBrosData,
+  purgeFakeDataFromCloudAndLocal,
   saveCompanySettings,
   saveProducts,
   saveCustomers,
@@ -58,7 +58,7 @@ import { LockScreen } from './components/LockScreen';
 import { CheckCircle, Cloud, RefreshCw, CloudUpload, CloudDownload, Database, ShieldCheck, Sparkles, AlertCircle } from 'lucide-react';
 
 export default function App() {
-  const { currentUser, isLoading, syncState, setSyncState, setLastSyncedAt, signInWithGoogle } = useAuth();
+  const { currentUser, isLoading, syncState, setSyncState, setLastSyncedAt, signInWithGoogle, authError, clearAuthError } = useAuth();
 
   // App Access Security Lock (Default PIN: 8271)
   const [appSecurityPin, setAppSecurityPin] = useState<string>(() => {
@@ -110,6 +110,12 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  useEffect(() => {
+    if (authError) {
+      showToast(`Sign-In Notice: ${authError}`);
+    }
+  }, [authError]);
+
   // Modals
   const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
   const [isDatabaseExplorerOpen, setIsDatabaseExplorerOpen] = useState(false);
@@ -132,10 +138,18 @@ export default function App() {
   // Track initial data migration per session
   const migrationAttemptedRef = useRef<string | null>(null);
 
-  // Initial Firestore connectivity test
+  // Automatically purge all mock/fake demo data from local and cloud storage
   useEffect(() => {
     testFirestoreConnection();
-  }, []);
+    purgeFakeDataFromCloudAndLocal(currentUser?.uid).then(() => {
+      setProducts(loadProducts());
+      setCustomers(loadCustomers());
+      setInvoices(loadInvoices());
+      setQuotations(loadQuotations());
+      setDeliveryNotes(loadDeliveryNotes());
+      setPayments(loadPayments());
+    });
+  }, [currentUser?.uid]);
 
   // Real-time Firestore Cloud Synchronization scoped under authenticated user account
   useEffect(() => {
@@ -631,39 +645,6 @@ export default function App() {
     }
   };
 
-  const handleRestoreBakeryRecords = () => {
-    populateRotiBrosData(currentUser?.uid);
-    const s = loadCompanySettings();
-    const p = loadProducts();
-    const c = loadCustomers();
-    const inv = loadInvoices();
-    const q = loadQuotations();
-    const dn = loadDeliveryNotes();
-    const pay = loadPayments();
-
-    setCompanySettings(s);
-    setProducts(p);
-    setCustomers(c);
-    setInvoices(inv);
-    setQuotations(q);
-    setDeliveryNotes(dn);
-    setPayments(pay);
-
-    if (currentUser?.uid) {
-      migrateLocalDataToUserFirestore(currentUser.uid, {
-        companySettings: s,
-        products: p,
-        customers: c,
-        invoices: inv,
-        quotations: q,
-        deliveryNotes: dn,
-        payments: pay
-      });
-    }
-
-    showToast('Roti Bros Bakery records populated and synced!');
-  };
-
   // Unread emails count
   const unreadEmailCount = communications.filter(c => c.folder === 'inbox' && c.status === 'unread').length;
 
@@ -680,16 +661,6 @@ export default function App() {
             </span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {invoices.length === 0 && (
-              <button
-                onClick={handleRestoreBakeryRecords}
-                className="flex items-center gap-1 px-2.5 py-1 bg-yellow-400 hover:bg-yellow-300 text-black font-extrabold rounded text-xs transition cursor-pointer"
-                title="Populate authentic Roti Bros bakery records into your account"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Restore Bakery Records</span>
-              </button>
-            )}
             <button
               onClick={handleForcePushToCloud}
               className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition cursor-pointer"

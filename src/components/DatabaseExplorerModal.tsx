@@ -8,7 +8,7 @@ import {
   Building2, Layers, ShieldCheck, X, ExternalLink, HardDrive, CheckCircle2,
   AlertCircle, MessageSquare, Mail, UserCheck
 } from 'lucide-react';
-import { exportDatabaseJSON, importDatabaseJSON, deleteDocumentFromUserFirestore, testFirestoreConnection, populateRotiBrosData } from '../utils/storage';
+import { exportDatabaseJSON, importDatabaseJSON, deleteDocumentFromUserFirestore, testFirestoreConnection, purgeFakeDataFromCloudAndLocal } from '../utils/storage';
 import { auth } from '../lib/firebase';
 
 interface Props {
@@ -383,18 +383,18 @@ export const DatabaseExplorerModal: React.FC<Props> = ({
             </button>
 
             <button
-              onClick={() => {
-                populateRotiBrosData(auth.currentUser?.uid);
-                onShowToast('Roti Bros Bakery records populated and synced!');
+              onClick={async () => {
+                await purgeFakeDataFromCloudAndLocal(auth.currentUser?.uid);
+                onShowToast('All demo/mock records have been wiped clean.');
                 setTimeout(() => {
                   window.location.reload();
-                }, 600);
+                }, 500);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
-              title="Populate authentic Roti Bros bakery products, customer branches, invoices & delivery notes"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-800/80 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
+              title="Purge all demo and mock records from local storage and cloud database"
             >
-              <Package className="w-3.5 h-3.5" />
-              <span>Load Bakery Data</span>
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Purge Mock Data</span>
             </button>
 
             <button

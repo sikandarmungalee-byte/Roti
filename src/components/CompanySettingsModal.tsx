@@ -423,7 +423,7 @@ export const CompanySettingsModal: React.FC<Props> = ({
                       setPinInput(val);
                     }}
                     className="w-24 px-3 py-1.5 text-center font-mono font-extrabold text-base tracking-widest border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-yellow-400 outline-none"
-                    placeholder="8271"
+                    placeholder="••••"
                   />
                 </div>
 
