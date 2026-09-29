@@ -49,23 +49,36 @@ import { LockScreen } from './components/LockScreen';
 import { CheckCircle, Cloud, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  const { currentUser, isLoading, setSyncState, setLastSyncedAt } = useAuth();
+  const { currentUser, isLoading, syncState, setSyncState, setLastSyncedAt, signInWithGoogle } = useAuth();
 
-  // App Access Security Lock (PIN: 8271)
+  // App Access Security Lock (Default PIN: 8271)
+  const [appSecurityPin, setAppSecurityPin] = useState<string>(() => {
+    return localStorage.getItem('appSecurityPin') || '8271';
+  });
+
   const [isLocked, setIsLocked] = useState<boolean>(() => {
-    return sessionStorage.getItem('isAppUnlocked') !== 'true';
+    return sessionStorage.getItem('isAppSessionUnlocked') !== 'true';
   });
 
   const handleUnlock = () => {
-    sessionStorage.setItem('isAppUnlocked', 'true');
+    sessionStorage.setItem('isAppSessionUnlocked', 'true');
     setIsLocked(false);
     showToast('Application unlocked.');
   };
 
   const handleLock = () => {
-    sessionStorage.removeItem('isAppUnlocked');
+    sessionStorage.removeItem('isAppSessionUnlocked');
     setIsLocked(true);
+    showToast('Application locked.');
   };
+
+  const handleUpdatePin = (newPin: string) => {
+    localStorage.setItem('appSecurityPin', newPin);
+    setAppSecurityPin(newPin);
+    showToast('Security PIN updated successfully.');
+  };
+
+  const [dismissedSyncBar, setDismissedSyncBar] = useState<boolean>(false);
 
   // Primary State (Synced with Firestore Cloud Database)
   const [companySettings, setCompanySettings] = useState<CompanySettings>(loadCompanySettings);
@@ -514,50 +527,39 @@ export default function App() {
   // Unread emails count
   const unreadEmailCount = communications.filter(c => c.folder === 'inbox' && c.status === 'unread').length;
 
-  // 1. Loading Authentication State
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-4">
-        <div className="p-4 bg-yellow-400 text-black rounded-2xl shadow-xl animate-pulse">
-          <Cloud className="w-8 h-8 stroke-[2.5]" />
-        </div>
-        <div className="text-center space-y-1">
-          <p className="text-sm font-extrabold text-white">Roti Bros Invoicing Suite</p>
-          <p className="text-xs text-slate-400 flex items-center justify-center gap-1.5">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin text-yellow-400" />
-            Connecting to Firebase Firestore Cloud...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Unauthenticated: Display Sign In Screen unless offline preview is requested
-  if (!currentUser && !isOfflinePreview) {
-    return (
-      <AuthScreen
-        hasLocalData={invoices.length > 0 || products.length > 0 || customers.length > 0}
-        onContinueOffline={() => setIsOfflinePreview(true)}
-      />
-    );
-  }
-
-  // 3. Render Suite (Cloud-synced if logged in, or local cache if offline preview)
+  // Render Full Production Suite Immediately (Zero-block startup)
   return (
     <div className="min-[#f8fafc] dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen flex flex-col font-sans">
-      {/* Offline Mode Banner when previewing without sign in */}
-      {!currentUser && isOfflinePreview && (
-        <div className="bg-amber-950/80 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-200 z-40">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span>Working in <strong>Offline Local Mode</strong>. All data is saved on this device.</span>
+      {/* Cloud Sync Announcement & Quick Sign-in Bar */}
+      {!currentUser && !dismissedSyncBar && (
+        <div className="bg-slate-900 border-b border-yellow-500/30 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-200 z-40">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+            <span className="truncate">
+              <strong>Workspace Active:</strong> Viewing your local invoices & records. Sign in with Google to sync in real-time across your phone and PC.
+            </span>
           </div>
-          <button
-            onClick={() => setIsOfflinePreview(false)}
-            className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-black font-extrabold rounded-lg transition cursor-pointer"
-          >
-            Sign In with Google to Sync
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => signInWithGoogle()}
+              className="flex items-center gap-1.5 px-3 py-1 bg-yellow-400 hover:bg-yellow-300 text-black font-extrabold rounded-lg shadow transition cursor-pointer text-xs"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+            <button
+              onClick={() => setDismissedSyncBar(true)}
+              className="text-slate-400 hover:text-white px-2 py-1 text-xs"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
@@ -565,7 +567,7 @@ export default function App() {
       {isLocked && (
         <LockScreen
           onUnlock={handleUnlock}
-          requiredPin="8271"
+          requiredPin={appSecurityPin}
         />
       )}
 
@@ -726,6 +728,9 @@ export default function App() {
         onClose={() => setIsCompanySettingsOpen(false)}
         settings={companySettings}
         onSave={handleSaveCompanySettings}
+        securityPin={appSecurityPin}
+        onUpdatePin={handleUpdatePin}
+        onLockNow={handleLock}
       />
 
       <DatabaseExplorerModal

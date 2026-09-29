@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { CompanySettings } from '../types';
-import { Building2, X, Save, Image, CreditCard, Database, Download, Upload, CheckCircle2, HardDrive } from 'lucide-react';
+import { Building2, X, Save, Image, CreditCard, Database, Download, Upload, CheckCircle2, HardDrive, Lock, ShieldCheck, KeyRound } from 'lucide-react';
 import { exportDatabaseJSON, importDatabaseJSON } from '../utils/storage';
 
 interface Props {
@@ -8,11 +8,24 @@ interface Props {
   onClose: () => void;
   settings: CompanySettings;
   onSave: (updated: CompanySettings) => void;
+  securityPin?: string;
+  onUpdatePin?: (newPin: string) => void;
+  onLockNow?: () => void;
 }
 
-export const CompanySettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onSave }) => {
+export const CompanySettingsModal: React.FC<Props> = ({ 
+  isOpen, 
+  onClose, 
+  settings, 
+  onSave,
+  securityPin = '8271',
+  onUpdatePin,
+  onLockNow
+}) => {
   const [formData, setFormData] = useState<CompanySettings>({ ...settings });
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [pinInput, setPinInput] = useState<string>(securityPin);
+  const [pinSavedMessage, setPinSavedMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!isOpen) return null;
@@ -363,6 +376,78 @@ export const CompanySettingsModal: React.FC<Props> = ({ isOpen, onClose, setting
                 <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-pulse">
                   {importStatus}
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* System Security & Access PIN */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-yellow-400/50 pb-1 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-yellow-600" />
+                App Security & PIN Lock
+              </span>
+              <span className="text-[10px] bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full font-mono font-bold">PIN Protected</span>
+            </h3>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                Protect your invoicing and customer financials from unauthorized access on this device.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    4-Digit Security PIN:
+                  </label>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    value={pinInput}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setPinInput(val);
+                    }}
+                    className="w-24 px-3 py-1.5 text-center font-mono font-extrabold text-base tracking-widest border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-yellow-400 outline-none"
+                    placeholder="8271"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (pinInput.length === 4) {
+                      onUpdatePin?.(pinInput);
+                      setPinSavedMessage('PIN updated successfully!');
+                      setTimeout(() => setPinSavedMessage(null), 3000);
+                    } else {
+                      alert('Please enter a 4-digit numeric PIN');
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-yellow-400 hover:bg-yellow-500 text-black font-extrabold text-xs rounded-lg shadow-xs transition cursor-pointer"
+                >
+                  Save New PIN
+                </button>
+
+                {onLockNow && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onLockNow();
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-950/80 hover:bg-red-900 text-red-300 rounded-lg text-xs font-bold border border-red-500/40 transition cursor-pointer"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    Lock App Now
+                  </button>
+                )}
+              </div>
+
+              {pinSavedMessage && (
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                  {pinSavedMessage}
+                </p>
               )}
             </div>
           </div>

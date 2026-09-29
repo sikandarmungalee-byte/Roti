@@ -311,10 +311,11 @@ export const Navigation: React.FC<Props> = ({
               {onLockApp && (
                 <button
                   onClick={onLockApp}
-                  className="p-2 bg-red-950/70 hover:bg-red-900 text-red-300 rounded-lg text-xs font-bold border border-red-500/40 hover:border-red-400 transition"
-                  title="Lock application access"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-red-950/70 hover:bg-red-900 text-red-300 rounded-lg text-xs font-bold border border-red-500/40 hover:border-red-400 transition cursor-pointer"
+                  title="Lock application access with PIN"
                 >
-                  <Lock className="w-4 h-4 text-red-400" />
+                  <Lock className="w-3.5 h-3.5 text-red-400" />
+                  <span>Lock</span>
                 </button>
               )}
             </div>
@@ -454,6 +455,22 @@ export const Navigation: React.FC<Props> = ({
                 </button>
               );
             })}
+
+            {onLockApp && (
+              <button
+                onClick={() => {
+                  onLockApp();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold bg-red-950/70 border border-red-500/40 text-red-300 mt-3 transition active:scale-98"
+              >
+                <div className="flex items-center gap-3">
+                  <Lock className="w-5 h-5 text-red-400" />
+                  <span>Lock System Access</span>
+                </div>
+                <span className="text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded font-mono">PIN</span>
+              </button>
+            )}
           </div>
         )}
       </header>
